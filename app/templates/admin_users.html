@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 py-6 space-y-5">
+
+  <!-- ── Header ──────────────────────────────────────────────────────────────── -->
+  <div>
+    <h1 class="text-xl font-bold">Administração</h1>
+    <p class="text-xs text-zinc-500 mt-0.5">Gerencie os usuários da plataforma.</p>
+  </div>
+
+  <!-- ── Create user ─────────────────────────────────────────────────────────── -->
+  <div class="rounded-2xl border border-zinc-800 p-4 space-y-3">
+    <div class="text-sm font-semibold">Criar usuário</div>
+    <form method="post" action="{{ url_for('admin.admin_create_user') }}"
+          class="flex flex-wrap items-end gap-3">
+      <div>
+        <label class="block text-xs text-zinc-400 mb-1">Usuário</label>
+        <input type="text" name="username" required
+               class="px-3 py-2 rounded-xl bg-zinc-800 border border-zinc-700 text-sm focus:outline-none focus:border-indigo-500">
+      </div>
+      <div>
+        <label class="block text-xs text-zinc-400 mb-1">Senha</label>
+        <input type="text" name="password" required
+               class="px-3 py-2 rounded-xl bg-zinc-800 border border-zinc-700 text-sm focus:outline-none focus:border-indigo-500">
+      </div>
+      <button type="submit"
+              class="px-4 py-2 rounded-xl bg-indigo-700 hover:bg-indigo-600 text-sm font-semibold transition-colors">
+        + Criar usuário
+      </button>
+    </form>
+  </div>
+
+  <!-- ── Users table ─────────────────────────────────────────────────────────── -->
+  <div class="rounded-2xl border border-zinc-800 overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-zinc-900 text-zinc-400 text-xs">
+        <tr>
+          <th class="px-3 py-3 text-left">Usuário</th>
+          <th class="px-3 py-3 text-left">Status</th>
+          <th class="px-3 py-3 text-left">WABAs</th>
+          <th class="px-3 py-3 text-left">Disparos</th>
+          <th class="px-3 py-3 text-right">Ações</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-zinc-800/60">
+        {% for u in users %}
+        <tr class="hover:bg-zinc-800/30 transition-colors">
+          <td class="px-3 py-3">
+            <a href="{{ url_for('admin.admin_user_detail', user_id=u.id) }}"
+               class="font-mono text-zinc-200 hover:text-indigo-400">{{ u.username }}</a>
+          </td>
+          <td class="px-3 py-3">
+            {% if u.is_admin %}
+              <span class="px-2 py-0.5 rounded-lg text-xs bg-indigo-900/40 text-indigo-300 border border-indigo-800/40">Admin</span>
+            {% elif u.is_banned %}
+              <span class="px-2 py-0.5 rounded-lg text-xs bg-red-900/40 text-red-300 border border-red-800/40">Banido</span>
+            {% else %}
+              <span class="px-2 py-0.5 rounded-lg text-xs bg-zinc-800 text-zinc-400">Ativo</span>
+            {% endif %}
+          </td>
+          <td class="px-3 py-3 text-zinc-400">{{ stats[u.id].wabas }}</td>
+          <td class="px-3 py-3 text-zinc-400">{{ stats[u.id].disparos }}</td>
+          <td class="px-3 py-3">
+            <div class="flex items-center justify-end gap-2">
+              <a href="{{ url_for('admin.admin_user_detail', user_id=u.id) }}"
+                 class="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs">Ver</a>
+              {% if not u.is_admin %}
+              <form method="post" action="{{ url_for('admin.admin_toggle_ban', user_id=u.id) }}">
+                {% if u.is_banned %}
+                  <button type="submit" class="px-3 py-1.5 rounded-lg bg-emerald-900/60 hover:bg-emerald-800/60 text-xs text-emerald-300 border border-emerald-800/40">Desbanir</button>
+                {% else %}
+                  <button type="submit" class="px-3 py-1.5 rounded-lg bg-red-900/60 hover:bg-red-800/60 text-xs text-red-300 border border-red-800/40"
+                          onclick="return confirm('Banir {{ u.username }}?')">Banir</button>
+                {% endif %}
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5" class="px-3 py-8 text-center text-zinc-500 text-sm">Nenhum usuário encontrado.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+{% endblock %}

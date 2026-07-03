@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 py-6 space-y-5">
+
+  <!-- ── Header ──────────────────────────────────────────────────────────────── -->
+  <div class="flex items-center justify-between">
+    <div>
+      <div class="flex items-center gap-2">
+        <h1 class="text-xl font-bold font-mono">{{ u.username }}</h1>
+        {% if u.is_admin %}
+          <span class="px-2 py-0.5 rounded-lg text-xs bg-indigo-900/40 text-indigo-300 border border-indigo-800/40">Admin</span>
+        {% elif u.is_banned %}
+          <span class="px-2 py-0.5 rounded-lg text-xs bg-red-900/40 text-red-300 border border-red-800/40">Banido</span>
+        {% else %}
+          <span class="px-2 py-0.5 rounded-lg text-xs bg-zinc-800 text-zinc-400">Ativo</span>
+        {% endif %}
+      </div>
+      <p class="text-xs text-zinc-500 mt-0.5">Chave de API: <span class="font-mono">{{ u.api_key or "—" }}</span></p>
+    </div>
+    <a href="{{ url_for('admin.admin_users') }}" class="text-sm px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700">&larr; Voltar</a>
+  </div>
+
+  <!-- ── Actions ─────────────────────────────────────────────────────────────── -->
+  <div class="rounded-2xl border border-zinc-800 p-4 space-y-4">
+    <div class="text-sm font-semibold">Ações</div>
+
+    <div class="flex flex-wrap gap-4">
+      <!-- Reset password -->
+      <form method="post" action="{{ url_for('admin.admin_reset_password', user_id=u.id) }}"
+            class="flex items-end gap-2">
+        <div>
+          <label class="block text-xs text-zinc-400 mb-1">Nova senha</label>
+          <input type="text" name="new_password" required
+                 class="px-3 py-2 rounded-xl bg-zinc-800 border border-zinc-700 text-sm focus:outline-none focus:border-indigo-500">
+        </div>
+        <button type="submit" class="px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm">Redefinir senha</button>
+      </form>
+
+      <!-- Regenerate API key -->
+      <form method="post" action="{{ url_for('admin.admin_regenerate_key', user_id=u.id) }}">
+        <button type="submit" class="px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm mt-5"
+                onclick="return confirm('Gerar uma nova chave de API para {{ u.username }}? A chave atual deixará de funcionar.')">
+          Regenerar chave de API
+        </button>
+      </form>
+
+      {% if u.id != current_user.id %}
+      <!-- Ban / unban -->
+      {% if not u.is_admin %}
+      <form method="post" action="{{ url_for('admin.admin_toggle_ban', user_id=u.id) }}">
+        {% if u.is_banned %}
+          <button type="submit" class="px-3 py-2 rounded-lg bg-emerald-900/60 hover:bg-emerald-800/60 text-sm text-emerald-300 border border-emerald-800/40 mt-5">Desbanir</button>
+        {% else %}
+          <button type="submit" class="px-3 py-2 rounded-lg bg-red-900/60 hover:bg-red-800/60 text-sm text-red-300 border border-red-800/40 mt-5"
+                  onclick="return confirm('Banir {{ u.username }}?')">Banir</button>
+        {% endif %}
+      </form>
+      {% endif %}
+
+      <!-- Promote / demote admin -->
+      <form method="post" action="{{ url_for('admin.admin_toggle_admin', user_id=u.id) }}">
+        {% if u.is_admin %}
+          <button type="submit" class="px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm mt-5"
+                  onclick="return confirm('Remover privilégios de admin de {{ u.username }}?')">Rebaixar para usuário comum</button>
+        {% else %}
+          <button type="submit" class="px-3 py-2 rounded-lg bg-indigo-900/60 hover:bg-indigo-800/60 text-sm text-indigo-300 border border-indigo-800/40 mt-5"
+                  onclick="return confirm('Promover {{ u.username }} a administrador?')">Promover a admin</button>
+        {% endif %}
+      </form>
+
+      <!-- Delete -->
+      <form method="post" action="{{ url_for('admin.admin_delete_user', user_id=u.id) }}">
+        <button type="submit" class="px-3 py-2 rounded-lg bg-red-900/60 hover:bg-red-800/60 text-sm text-red-300 border border-red-800/40 mt-5"
+                onclick="return confirm('Excluir permanentemente {{ u.username }}? Essa ação não pode ser desfeita.')">
+          Excluir usuário
+        </button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ── WABAs ───────────────────────────────────────────────────────────────── -->
+  <div class="rounded-2xl border border-zinc-800 overflow-hidden">
+    <div class="px-4 py-3 bg-zinc-900 text-sm font-semibold">WABAs ({{ wabas|length }})</div>
+    <table class="w-full text-sm">
+      <thead class="bg-zinc-900 text-zinc-400 text-xs">
+        <tr>
+          <th class="px-3 py-2 text-left">WABA ID</th>
+          <th class="px-3 py-2 text-left">Nome</th>
+          <th class="px-3 py-2 text-left">Phone Number ID</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-zinc-800/60">
+        {% for waba_id, entry in wabas.items() %}
+        <tr class="hover:bg-zinc-800/30 transition-colors">
+          <td class="px-3 py-2 font-mono text-zinc-200 text-xs">{{ waba_id }}</td>
+          <td class="px-3 py-2 text-zinc-400">{{ entry.get("snapshot", {}).get("waba_name", "") or "—" }}</td>
+          <td class="px-3 py-2 font-mono text-zinc-500 text-xs">{{ entry.get("phone_number_id", "") or "—" }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="3" class="px-3 py-6 text-center text-zinc-500 text-sm">Nenhuma WABA cadastrada.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── Login history ───────────────────────────────────────────────────────── -->
+  <div class="rounded-2xl border border-zinc-800 overflow-hidden">
+    <div class="px-4 py-3 bg-zinc-900 text-sm font-semibold">Histórico de login (últimos {{ logs|length }})</div>
+    <table class="w-full text-sm">
+      <thead class="bg-zinc-900 text-zinc-400 text-xs">
+        <tr>
+          <th class="px-3 py-2 text-left">Data</th>
+          <th class="px-3 py-2 text-left">IP</th>
+          <th class="px-3 py-2 text-left">User-Agent</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-zinc-800/60">
+        {% for log in logs %}
+        <tr class="hover:bg-zinc-800/30 transition-colors">
+          <td class="px-3 py-2 text-zinc-400 text-xs">{{ log.created_at.strftime("%d/%m/%Y %H:%M") if log.created_at else "" }}</td>
+          <td class="px-3 py-2 font-mono text-zinc-300 text-xs">{{ log.ip_address or "—" }}</td>
+          <td class="px-3 py-2 text-zinc-500 text-xs truncate max-w-xs">{{ log.user_agent or "—" }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="3" class="px-3 py-6 text-center text-zinc-500 text-sm">Nenhum login registrado.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+{% endblock %}

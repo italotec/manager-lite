@@ -1,0 +1,733 @@
+<!-- ══════════════ DISPARO MODAL (Disparar / Travar) ══════════════ -->
+<div id="disparoModalOverlay" class="hidden fixed inset-0 bg-black/70 z-40 flex items-center justify-center p-4">
+  <div class="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-6xl max-h-[92vh] overflow-y-auto">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-zinc-800 sticky top-0 bg-zinc-950 z-10">
+      <div class="flex items-center gap-2">
+        <button id="tabBtnDisparar" onclick="switchDisparoTab('disparar')"
+          class="px-4 py-1.5 rounded-lg text-sm font-semibold bg-emerald-800">Disparar</button>
+        <button id="tabBtnTravar" onclick="switchDisparoTab('travar')"
+          class="px-4 py-1.5 rounded-lg text-sm font-semibold bg-zinc-800 text-zinc-400">Travar</button>
+      </div>
+      <button onclick="closeDisparoModal()" class="text-zinc-400 hover:text-zinc-100 text-xl leading-none">&times;</button>
+    </div>
+
+    <div class="p-5">
+      <div class="flex flex-col lg:flex-row gap-5 items-start">
+        <div class="flex-1 min-w-0 space-y-5">
+
+          <!-- shared: list upload -->
+          <div class="rounded-2xl border border-zinc-800 bg-zinc-900/30 p-4">
+            <div class="text-sm font-semibold mb-2">Lista de leads</div>
+            <label id="listDropzone" for="listFile"
+              class="flex flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-zinc-700 bg-zinc-950/40 px-4 py-6 text-center cursor-pointer transition-colors hover:border-emerald-600 hover:bg-zinc-900/50">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 7.5 12 3m0 0L7.5 7.5M12 3v13.5" />
+              </svg>
+              <div class="text-sm text-zinc-300"><span class="text-emerald-400 font-medium">Clique para enviar</span> ou arraste o arquivo aqui</div>
+              <div class="text-xs text-zinc-500">.csv ou .xlsx</div>
+              <input type="file" id="listFile" accept=".csv,.xlsx" class="hidden" onchange="uploadList()">
+            </label>
+            <div id="listStatus" class="text-xs text-zinc-500 mt-2"></div>
+            <div id="listPreviewWrap" class="hidden mt-3">
+              <div class="flex items-center gap-3">
+                <label class="text-xs text-zinc-400">Coluna do telefone</label>
+                <select id="phoneColSelect" class="px-2 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-sm" onchange="onPhoneColChange()"></select>
+              </div>
+            </div>
+          </div>
+
+          <!-- shared: speed -->
+          <div class="rounded-2xl border border-zinc-800 bg-zinc-900/30 p-4">
+            <div class="text-sm font-semibold mb-2">Velocidade</div>
+            <div class="flex items-center gap-2 flex-wrap" id="speedButtons">
+              <button type="button" class="speed-btn px-3 py-1.5 rounded-lg text-sm bg-zinc-800" data-val="1" onclick="setSpeed(1)">1</button>
+              <button type="button" class="speed-btn px-3 py-1.5 rounded-lg text-sm bg-zinc-800" data-val="5" onclick="setSpeed(5)">5</button>
+              <button type="button" class="speed-btn px-3 py-1.5 rounded-lg text-sm bg-zinc-800" data-val="10" onclick="setSpeed(10)">10</button>
+              <button type="button" class="speed-btn px-3 py-1.5 rounded-lg text-sm bg-zinc-800" data-val="20" onclick="setSpeed(20)">20</button>
+              <button type="button" class="speed-btn px-3 py-1.5 rounded-lg text-sm bg-zinc-800" data-val="0" onclick="setSpeed(0)">MAX</button>
+              <input type="number" id="speedCustom" min="1" step="1" placeholder="custom"
+                class="w-24 px-2 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-sm text-center"
+                oninput="setSpeed(parseInt(this.value))">
+            </div>
+          </div>
+
+          <!-- DISPARAR TAB -->
+          <div id="disparoTabDisparar" class="space-y-4">
+            <div class="rounded-2xl border border-zinc-800 bg-zinc-900/30 p-4">
+              <div class="text-xs font-semibold uppercase tracking-wide text-zinc-400 mb-3">Contas selecionadas</div>
+              <div id="accountsListContainer" class="space-y-2"></div>
+            </div>
+
+            <div>
+              <div class="text-xs font-semibold uppercase tracking-wide text-zinc-400 mb-2 px-1">Variáveis do template</div>
+              <div id="groupsInputsContainer" class="space-y-3"></div>
+            </div>
+
+            <div class="flex items-center gap-3">
+              <button id="btnFireDisparar" onclick="fireDisparar()" class="px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 font-semibold">Disparar agora</button>
+            </div>
+            <div id="disparoProgress" class="space-y-3"></div>
+          </div>
+
+          <!-- TRAVAR TAB -->
+          <div id="disparoTabTravar" class="hidden space-y-4">
+            <div class="rounded-2xl border border-zinc-800 bg-zinc-900/30 p-4">
+              <div class="text-sm font-semibold mb-2">Contas selecionadas</div>
+              <div id="travarWabaSummary" class="text-xs text-zinc-400"></div>
+              <div class="text-xs text-zinc-500 mt-2">
+                Um template UTILITY aprovado é escolhido automaticamente para cada conta.
+                Envia uma única vez para todas as contas selecionadas (sem dividir a lista).
+              </div>
+            </div>
+
+            <div class="rounded-2xl border border-zinc-800 bg-zinc-900/30 p-4">
+              <div class="flex items-center justify-between mb-2">
+                <div class="text-sm font-semibold">Parâmetros do corpo do template</div>
+                <button type="button" onclick="addTravarParamRow()" class="text-xs px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700">+ Adicionar</button>
+              </div>
+              <div id="travarParamRows" class="space-y-2"></div>
+            </div>
+
+            <div class="flex items-center gap-3">
+              <button id="btnFireTravar" onclick="fireTravar()" class="px-5 py-2.5 rounded-xl bg-red-800 hover:bg-red-700 font-semibold">Travar agora</button>
+            </div>
+            <div id="travarProgress" class="space-y-3"></div>
+          </div>
+
+        </div>
+
+        <div id="previewColumn" class="w-full lg:w-80 xl:w-96 shrink-0 space-y-3 lg:sticky lg:top-4"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let DISPARO_ALL_WABAS = {};   // waba_id -> {waba_id, name, token, phones, tier, health_ok}
+let disparoListState = null;  // {list_id, columns, preview, row_count}
+let disparoBmState = {};      // waba_id -> {templates, templatesError, selectedTemplate, phoneNumberId}
+let disparoGroupConfig = {};  // varCount -> [{column}, ...] — shared column mapping per group of WABAs
+let disparoSpeedValue = 1;
+let disparoTravarParamMap = [];
+
+// Built from single chars so this file never contains adjacent literal brace
+// pairs — this template is Jinja-rendered server-side, and a literal
+// double-brace would be parsed as a Jinja expression instead of reaching the browser.
+const DISPARO_OB = '{' + '{', DISPARO_CB = '}' + '}';
+
+function disparoSelectedWabaIds() {
+  return Array.from(document.querySelectorAll('input[name="waba_ids"]:checked')).map(el => el.value);
+}
+
+async function openDisparoModal() {
+  const ids = disparoSelectedWabaIds();
+  if (!ids.length) { alert("Selecione ao menos 1 WABA."); return; }
+
+  // Reset per-open state so a previous session's list/template picks don't leak in
+  disparoListState = null;
+  disparoBmState = {};
+  disparoGroupConfig = {};
+  disparoTravarParamMap = [];
+  document.getElementById('listStatus').textContent = 'Carregando contas…';
+  document.getElementById('listPreviewWrap').classList.add('hidden');
+  document.getElementById('disparoProgress').innerHTML = '';
+  document.getElementById('travarProgress').innerHTML = '';
+
+  const r = await fetch("{{ url_for('disparar.disparar_wabas') }}");
+  const d = await r.json();
+  DISPARO_ALL_WABAS = {};
+  (d.wabas || []).forEach(w => {
+    if (ids.includes(w.waba_id)) DISPARO_ALL_WABAS[w.waba_id] = w;
+  });
+
+  document.getElementById('listStatus').textContent = '';
+  document.getElementById('disparoModalOverlay').classList.remove('hidden');
+  switchDisparoTab('disparar');
+  setSpeed(1);
+  loadAndRenderDisparar();
+  renderTravarSummary();
+}
+function closeDisparoModal() {
+  document.getElementById('disparoModalOverlay').classList.add('hidden');
+}
+function switchDisparoTab(tab) {
+  const isD = tab === 'disparar';
+  document.getElementById('disparoTabDisparar').classList.toggle('hidden', !isD);
+  document.getElementById('disparoTabTravar').classList.toggle('hidden', isD);
+  document.getElementById('previewColumn').classList.toggle('hidden', !isD);
+  document.getElementById('tabBtnDisparar').className = 'px-4 py-1.5 rounded-lg text-sm font-semibold ' + (isD ? 'bg-emerald-800' : 'bg-zinc-800 text-zinc-400');
+  document.getElementById('tabBtnTravar').className = 'px-4 py-1.5 rounded-lg text-sm font-semibold ' + (!isD ? 'bg-red-800' : 'bg-zinc-800 text-zinc-400');
+}
+
+// ── list upload ────────────────────────────────────────────────────────────
+function uploadList() {
+  const fileInput = document.getElementById('listFile');
+  const f = fileInput.files[0];
+  if (!f) return;
+  const fd = new FormData();
+  fd.append('list_file', f);
+  fd.append('has_header', '1');
+
+  document.getElementById('listStatus').textContent = `Enviando ${f.name}...`;
+  fetch("{{ url_for('disparar.upload_list') }}", { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) { document.getElementById('listStatus').textContent = d.error; return; }
+      disparoListState = d;
+      document.getElementById('listStatus').textContent = `${d.row_count} linha(s) carregada(s).`;
+      renderListPreview();
+      renderGroups();
+    })
+    .catch(() => { document.getElementById('listStatus').textContent = 'Erro ao enviar arquivo.'; });
+}
+
+function setupListDropzone() {
+  const zone = document.getElementById('listDropzone');
+  if (!zone) return;
+  ['dragenter', 'dragover'].forEach(evt => zone.addEventListener(evt, e => {
+    e.preventDefault(); e.stopPropagation();
+    zone.classList.add('border-emerald-600', 'bg-zinc-900/50');
+  }));
+  ['dragleave', 'drop'].forEach(evt => zone.addEventListener(evt, e => {
+    e.preventDefault(); e.stopPropagation();
+    zone.classList.remove('border-emerald-600', 'bg-zinc-900/50');
+  }));
+  zone.addEventListener('drop', e => {
+    const files = e.dataTransfer.files;
+    if (files && files.length) {
+      document.getElementById('listFile').files = files;
+      uploadList();
+    }
+  });
+}
+
+function renderListPreview() {
+  const wrap = document.getElementById('listPreviewWrap');
+  wrap.classList.remove('hidden');
+
+  const sel = document.getElementById('phoneColSelect');
+  sel.innerHTML = disparoListState.columns.map(c => `<option value="${disparoEscapeHtml(c)}">${disparoEscapeHtml(c)}</option>`).join('');
+  const phoneGuess = disparoListState.columns.find(c => /tel|phone|numero|número|celular|whats/i.test(c));
+  if (phoneGuess) sel.value = phoneGuess;
+}
+
+function onPhoneColChange() {
+  renderGroups();
+}
+
+function currentPhoneCol() {
+  const sel = document.getElementById('phoneColSelect');
+  return sel ? sel.value : '';
+}
+
+function sampleRow() {
+  return (disparoListState && disparoListState.preview && disparoListState.preview[0]) || {};
+}
+
+// ── speed ──────────────────────────────────────────────────────────────────
+function setSpeed(v) {
+  v = Number(v);
+  if (isNaN(v) || v < 0) return;
+  disparoSpeedValue = v;
+  if (v === 0) {
+    const custom = document.getElementById('speedCustom');
+    if (custom) custom.value = '';
+  }
+  document.querySelectorAll('.speed-btn').forEach(b => {
+    b.classList.toggle('bg-emerald-700', Number(b.dataset.val) === v);
+    b.classList.toggle('bg-zinc-800', Number(b.dataset.val) !== v);
+  });
+}
+
+// ── template loading + account rows + grouped variable config ─────────────
+
+function ensureBmState(wabaId) {
+  if (!disparoBmState[wabaId]) {
+    const w = DISPARO_ALL_WABAS[wabaId];
+    disparoBmState[wabaId] = {
+      templates: null,
+      templatesError: '',
+      selectedTemplate: null,
+      phoneNumberId: w.preferred_phone_id || (w.phones[0] && w.phones[0].phone_number_id) || '',
+    };
+  }
+  return disparoBmState[wabaId];
+}
+
+function bodyVarsOf(template) {
+  // Returns [{label, name}] — label is the raw placeholder token for
+  // display/preview matching; name is what gets sent as parameter_name.
+  // WhatsApp templates use EITHER positional placeholders (1, 2, ..) OR named
+  // ones (e.g. customer_name), never both — positional ones must NOT get a
+  // parameter_name (order-based instead), so name is '' for those and the
+  // array order is sorted 1..N to match.
+  if (!template) return [];
+  const comp = (template.components || []).find(c => (c.type || '').toUpperCase() === 'BODY');
+  if (!comp || !comp.text) return [];
+  const matches = [...comp.text.matchAll(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g)].map(m => m[1]);
+  let uniq = [...new Set(matches)];
+  const allNumeric = uniq.length > 0 && uniq.every(v => /^\d+$/.test(v));
+  if (allNumeric) uniq.sort((a, b) => Number(a) - Number(b));
+  return uniq.map(v => ({ label: v, name: allNumeric ? '' : v }));
+}
+
+function loadAndRenderDisparar() {
+  const ids = Object.keys(DISPARO_ALL_WABAS);
+  document.getElementById('accountsListContainer').innerHTML =
+    '<div class="text-xs text-zinc-500 px-1">Carregando templates…</div>';
+  document.getElementById('groupsInputsContainer').innerHTML = '';
+  document.getElementById('previewColumn').innerHTML = '';
+
+  Promise.all(ids.map(fetchBmTemplatesAsync)).then(() => {
+    renderAccountsList();
+    renderGroups();
+  });
+}
+
+function fetchBmTemplatesAsync(wabaId) {
+  const st = ensureBmState(wabaId);
+  if (st.templates) return Promise.resolve();
+  return fetch(`/disparar/waba/${wabaId}/templates`)
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) { st.templates = []; st.templatesError = d.error; return; }
+      st.templates = d.templates || [];
+      const auto = st.templates.find(t => t.name === d.auto_template_name) ||
+                   st.templates.find(t => t.status === 'APPROVED');
+      st.selectedTemplate = auto || null;
+    })
+    .catch(() => { st.templates = []; st.templatesError = 'Erro ao buscar templates.'; });
+}
+
+// ── accounts list (compact row per WABA: phone + template + var badge) ─────
+
+function renderAccountsList() {
+  const wrap = document.getElementById('accountsListContainer');
+  wrap.innerHTML = '';
+  Object.keys(DISPARO_ALL_WABAS).forEach(id => wrap.appendChild(buildAccountRow(id)));
+}
+
+function buildAccountRow(wabaId) {
+  const w = DISPARO_ALL_WABAS[wabaId];
+  const st = ensureBmState(wabaId);
+  const approved = (st.templates || []).filter(t => t.status === 'APPROVED');
+  const varCount = st.selectedTemplate ? bodyVarsOf(st.selectedTemplate).length : null;
+
+  const row = document.createElement('div');
+  row.className = 'flex flex-wrap items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/40 px-3 py-2.5';
+
+  let tplOptions;
+  if (st.templatesError) {
+    tplOptions = `<option value="">erro: ${disparoEscapeHtml(st.templatesError)}</option>`;
+  } else if (!approved.length) {
+    tplOptions = '<option value="">nenhum template aprovado</option>';
+  } else {
+    tplOptions = approved.map(t => `<option value="${disparoEscapeHtml(t.name)}" ${st.selectedTemplate && st.selectedTemplate.name === t.name ? 'selected' : ''}>${disparoEscapeHtml(t.name)} · ${disparoEscapeHtml(t.category)}</option>`).join('');
+  }
+
+  row.innerHTML = `
+    <div class="min-w-[120px] flex-1">
+      <div class="text-sm font-medium truncate">${disparoEscapeHtml(w.name)}</div>
+      <div class="text-[11px] text-zinc-500 truncate">${disparoEscapeHtml(w.waba_id)}</div>
+    </div>
+    <select class="phone-select px-2 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs w-36">
+      ${w.phones.map(p => `<option value="${disparoEscapeHtml(p.phone_number_id)}">${disparoEscapeHtml(p.display)}</option>`).join('')}
+    </select>
+    <select class="tpl-select px-2 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs flex-[2] min-w-[180px]">
+      ${tplOptions}
+    </select>
+    <span class="text-[11px] px-2 py-1 rounded-full whitespace-nowrap ${varCount === null ? 'bg-zinc-800 text-zinc-500' : 'bg-emerald-900/40 text-emerald-300'}">
+      ${varCount === null ? '—' : (varCount === 1 ? '1 variável' : `${varCount} variáveis`)}
+    </span>
+  `;
+
+  row.querySelector('.phone-select').value = st.phoneNumberId;
+  row.querySelector('.phone-select').addEventListener('change', e => { st.phoneNumberId = e.target.value; });
+
+  row.querySelector('.tpl-select').addEventListener('change', e => {
+    st.selectedTemplate = (st.templates || []).find(t => t.name === e.target.value) || null;
+    renderAccountsList();
+    renderGroups();
+  });
+
+  return row;
+}
+
+// ── grouped variable configuration (one shared config per var-count group) ─
+
+function disparoGroups() {
+  const map = new Map(); // varCount -> [wabaId, ...]
+  Object.keys(DISPARO_ALL_WABAS).forEach(id => {
+    const st = disparoBmState[id];
+    if (!st || !st.selectedTemplate) return;
+    const count = bodyVarsOf(st.selectedTemplate).length;
+    if (!map.has(count)) map.set(count, []);
+    map.get(count).push(id);
+  });
+  return map;
+}
+
+function paramMapFromConfig(template, configArr) {
+  return bodyVarsOf(template).map((v, i) => ({ label: v.label, name: v.name, column: (configArr[i] && configArr[i].column) || '' }));
+}
+
+function paramMapFor(wabaId) {
+  const st = disparoBmState[wabaId];
+  if (!st || !st.selectedTemplate) return [];
+  const varCount = bodyVarsOf(st.selectedTemplate).length;
+  return paramMapFromConfig(st.selectedTemplate, disparoGroupConfig[varCount] || []);
+}
+
+function ensureGroupConfig(varCount) {
+  if (!disparoGroupConfig[varCount] || disparoGroupConfig[varCount].length !== varCount) {
+    disparoGroupConfig[varCount] = Array.from({ length: varCount }, () => ({ column: '' }));
+  }
+  return disparoGroupConfig[varCount];
+}
+
+function groupLabel(varCount) {
+  return varCount === 0 ? 'Sem variáveis' : (varCount === 1 ? '1 variável' : `${varCount} variáveis`);
+}
+
+function renderGroups() {
+  const inputsWrap = document.getElementById('groupsInputsContainer');
+  const previewWrap = document.getElementById('previewColumn');
+  inputsWrap.innerHTML = '';
+  previewWrap.innerHTML = '';
+  const groups = disparoGroups();
+  if (!groups.size) {
+    inputsWrap.innerHTML = '<div class="text-xs text-zinc-500 px-1">Selecione um template para cada conta.</div>';
+    previewWrap.innerHTML = '<div class="text-xs text-zinc-500 px-1">A pré-visualização aparece aqui.</div>';
+    return;
+  }
+  [...groups.keys()].sort((a, b) => a - b).forEach(varCount => {
+    const wabaIds = groups.get(varCount);
+    inputsWrap.appendChild(buildGroupInputsBlock(varCount, wabaIds));
+    previewWrap.appendChild(buildGroupPreviewBlock(varCount, wabaIds));
+  });
+}
+
+function buildGroupInputsBlock(varCount, wabaIds) {
+  const configArr = ensureGroupConfig(varCount);
+  const repTemplate = disparoBmState[wabaIds[0]].selectedTemplate;
+  const labels = bodyVarsOf(repTemplate);
+  const names = wabaIds.map(id => DISPARO_ALL_WABAS[id].name).join(', ');
+  const cols = (disparoListState && disparoListState.columns) || [];
+
+  const block = document.createElement('div');
+  block.className = 'rounded-2xl border border-zinc-800 bg-zinc-900/30 p-4';
+  block.innerHTML = `
+    <div class="flex items-center justify-between gap-3 mb-3">
+      <div class="text-sm font-semibold whitespace-nowrap">${groupLabel(varCount)}</div>
+      <div class="text-[11px] text-zinc-500 truncate text-right">${disparoEscapeHtml(names)}</div>
+    </div>
+    <div class="param-rows space-y-2"></div>
+  `;
+
+  const paramWrap = block.querySelector('.param-rows');
+  if (!varCount) {
+    paramWrap.innerHTML = '<div class="text-xs text-zinc-500">Este(s) template(s) não têm variáveis no corpo.</div>';
+  } else {
+    paramWrap.innerHTML = labels.map((v, i) => `
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-zinc-500 w-20 truncate">${DISPARO_OB}${disparoEscapeHtml(v.label)}${DISPARO_CB}</span>
+        <span class="text-zinc-600">→</span>
+        <select class="param-col-select flex-1 px-2 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-xs" data-idx="${i}">
+          <option value="">selecione a coluna</option>
+          ${cols.map(c => `<option value="${disparoEscapeHtml(c)}" ${configArr[i].column === c ? 'selected' : ''}>${disparoEscapeHtml(c)}</option>`).join('')}
+        </select>
+      </div>`).join('');
+
+    paramWrap.querySelectorAll('.param-col-select').forEach(sel => {
+      sel.addEventListener('change', e => {
+        configArr[Number(e.target.dataset.idx)].column = e.target.value;
+        updateGroupPreview(varCount);
+      });
+    });
+  }
+
+  return block;
+}
+
+function buildGroupPreviewBlock(varCount, wabaIds) {
+  const configArr = ensureGroupConfig(varCount);
+  const repTemplate = disparoBmState[wabaIds[0]].selectedTemplate;
+  const names = wabaIds.map(id => DISPARO_ALL_WABAS[id].name).join(', ');
+
+  const block = document.createElement('div');
+  block.className = 'rounded-2xl border border-zinc-800 bg-zinc-900/30 p-4';
+  block.id = `previewGroup-${varCount}`;
+  block.innerHTML = `
+    <div class="text-[11px] text-zinc-500 mb-2 truncate">${disparoEscapeHtml(names)}</div>
+    <div class="wa-preview-wrap flex justify-center"></div>
+  `;
+  renderWaPreviewInto(block.querySelector('.wa-preview-wrap'), repTemplate, paramMapFromConfig(repTemplate, configArr));
+  return block;
+}
+
+function updateGroupPreview(varCount) {
+  const block = document.getElementById(`previewGroup-${varCount}`);
+  if (!block) return;
+  const wabaIds = disparoGroups().get(varCount);
+  if (!wabaIds || !wabaIds.length) return;
+  const repTemplate = disparoBmState[wabaIds[0]].selectedTemplate;
+  renderWaPreviewInto(block.querySelector('.wa-preview-wrap'), repTemplate, paramMapFromConfig(repTemplate, ensureGroupConfig(varCount)));
+}
+
+// ── WhatsApp-style preview ──────────────────────────────────────────────────
+
+function disparoSubstitute(text, paramMap, row) {
+  if (!text) return '';
+  return text.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (m, name) => {
+    const pm = paramMap.find(p => p.label === name);
+    if (pm && pm.column && row && row[pm.column] !== undefined) return String(row[pm.column]);
+    return `[${name}]`;
+  });
+}
+
+function renderWaPreviewInto(wrap, template, paramMap) {
+  if (!template) { wrap.innerHTML = '<div class="text-xs text-zinc-500">Selecione um template para pré-visualizar.</div>'; return; }
+
+  const row = sampleRow();
+  const header = (template.components || []).find(c => (c.type || '').toUpperCase() === 'HEADER');
+  const body = (template.components || []).find(c => (c.type || '').toUpperCase() === 'BODY');
+  const footer = (template.components || []).find(c => (c.type || '').toUpperCase() === 'FOOTER');
+  const buttons = (template.components || []).find(c => (c.type || '').toUpperCase() === 'BUTTONS');
+
+  let headerHtml = '';
+  if (header) {
+    const fmt = (header.format || 'TEXT').toUpperCase();
+    if (fmt === 'TEXT') {
+      headerHtml = `<div class="font-semibold text-sm mb-1">${disparoEscapeHtml(disparoSubstitute(header.text || '', paramMap, row))}</div>`;
+    } else {
+      headerHtml = `<div class="mb-2 rounded-lg bg-black/20 text-zinc-300 text-xs px-3 py-6 text-center">[${fmt}]</div>`;
+    }
+  }
+
+  const bodyText = body ? disparoSubstitute(body.text || '', paramMap, row) : '';
+  const footerHtml = footer ? `<div class="text-xs text-zinc-300/70 mt-1">${disparoEscapeHtml(footer.text || '')}</div>` : '';
+
+  let buttonsHtml = '';
+  if (buttons && buttons.buttons && buttons.buttons.length) {
+    buttonsHtml = buttons.buttons.map(b => `<div class="wa-btn text-center text-sm py-2">${disparoEscapeHtml(b.text || b.type || '')}</div>`).join('');
+  }
+
+  wrap.innerHTML = `
+    <div class="wa-phone rounded-2xl p-4 w-full max-w-xs">
+      <div class="wa-bubble rounded-lg px-3 py-2 text-sm">
+        ${headerHtml}
+        <div class="whitespace-pre-wrap">${disparoEscapeHtml(bodyText)}</div>
+        ${footerHtml}
+        <div class="text-[10px] text-zinc-300/60 text-right mt-1">12:00 ✓✓</div>
+      </div>
+      ${buttonsHtml ? `<div class="mt-1 rounded-lg overflow-hidden bg-[#005c4b]">${buttonsHtml}</div>` : ''}
+    </div>`;
+}
+
+// ── fire: disparar (single or multi) ────────────────────────────────────────
+
+function fireDisparar() {
+  const ids = Object.keys(DISPARO_ALL_WABAS);
+  if (!disparoListState) { alert('Envie uma lista primeiro.'); return; }
+  const phoneCol = currentPhoneCol();
+  if (!phoneCol) { alert('Selecione a coluna do telefone.'); return; }
+  if (!ids.length) { alert('Selecione ao menos um BM.'); return; }
+
+  const progress = document.getElementById('disparoProgress');
+  progress.innerHTML = '';
+
+  if (ids.length === 1) {
+    const wabaId = ids[0];
+    const st = disparoBmState[wabaId];
+    if (!st || !st.selectedTemplate) { alert('Selecione um template.'); return; }
+    fetch("{{ url_for('disparar.start_disparo') }}", {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        list_id: disparoListState.list_id,
+        phone_col: phoneCol,
+        phone_number_id: st.phoneNumberId,
+        token: DISPARO_ALL_WABAS[wabaId].token,
+        template_name: st.selectedTemplate.name,
+        template_language: st.selectedTemplate.language,
+        param_map: paramMapFor(wabaId),
+        max_workers: disparoSpeedValue,
+        waba_id: wabaId,
+      }),
+    }).then(r => r.json()).then(d => {
+      if (d.error) { progress.innerHTML = `<div class="text-red-400 text-sm">${disparoEscapeHtml(d.error)}</div>`; return; }
+      pollDisparoJob(d.job_id, progress, DISPARO_ALL_WABAS[wabaId].name);
+    });
+  } else {
+    const wabasSpec = ids.map(id => {
+      const w = DISPARO_ALL_WABAS[id];
+      const st = disparoBmState[id];
+      return {
+        waba_id: id, name: w.name, phone_number_id: st.phoneNumberId, token: w.token,
+        template_name: st.selectedTemplate ? st.selectedTemplate.name : '',
+        template_language: st.selectedTemplate ? st.selectedTemplate.language : 'en',
+        param_map: paramMapFor(id),
+      };
+    });
+    if (wabasSpec.some(w => !w.template_name)) { alert('Selecione um template para cada BM.'); return; }
+
+    fetch("{{ url_for('disparar.batch_start') }}", {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        list_id: disparoListState.list_id,
+        phone_col: phoneCol,
+        wabas_spec: wabasSpec,
+        max_workers: disparoSpeedValue,
+      }),
+    }).then(r => r.json()).then(d => {
+      if (d.error) { progress.innerHTML = `<div class="text-red-400 text-sm">${disparoEscapeHtml(d.error)}</div>`; return; }
+      pollDisparoBatch(d.batch_id, progress);
+    });
+  }
+}
+
+function pollDisparoJob(jobId, container, label) {
+  const box = document.createElement('div');
+  box.className = 'rounded-xl border border-zinc-800 p-3 text-sm';
+  box.innerHTML = `
+    <div class="flex items-center justify-between gap-2 mb-1">
+      <div class="font-medium">${disparoEscapeHtml(label || '')}</div>
+      <button type="button" class="job-stop-btn text-xs px-2 py-1 rounded-lg bg-red-900/60 hover:bg-red-800/60 text-red-300 border border-red-800/40">Parar</button>
+    </div>
+    <div class="job-line text-xs text-zinc-400">iniciando...</div>`;
+  container.appendChild(box);
+
+  const stopBtn = box.querySelector('.job-stop-btn');
+  stopBtn.addEventListener('click', () => {
+    stopBtn.disabled = true;
+    stopBtn.textContent = 'Parando…';
+    fetch(`/disparar/job/${jobId}/stop`, { method: 'POST' });
+  });
+
+  function tick() {
+    fetch(`/disparar/job/${jobId}/status`).then(r => r.json()).then(d => {
+      if (d.error) return;
+      box.querySelector('.job-line').textContent =
+        `${d.status} — enviados: ${d.sent} • falhas: ${d.failed} • pulados: ${d.skipped} • ${d.pct}%`;
+      if (d.status === 'running' || d.status === 'queued') {
+        setTimeout(tick, 1500);
+      } else {
+        stopBtn.classList.add('hidden');
+      }
+    });
+  }
+  tick();
+}
+
+function pollDisparoBatch(batchId, container) {
+  const box = document.createElement('div');
+  box.className = 'rounded-xl border border-zinc-800 p-3 text-sm space-y-1';
+  box.innerHTML = `
+    <div class="flex items-center justify-between gap-2">
+      <div class="font-medium">Lote ${batchId}</div>
+      <button type="button" class="batch-stop-btn text-xs px-2 py-1 rounded-lg bg-red-900/60 hover:bg-red-800/60 text-red-300 border border-red-800/40">Parar</button>
+    </div>
+    <div class="batch-lines text-xs text-zinc-400"></div>`;
+  container.appendChild(box);
+
+  const stopBtn = box.querySelector('.batch-stop-btn');
+  stopBtn.addEventListener('click', () => {
+    stopBtn.disabled = true;
+    stopBtn.textContent = 'Parando…';
+    fetch(`/disparar/batch/${batchId}/stop`, { method: 'POST' });
+  });
+
+  function tick() {
+    fetch(`/disparar/batch/${batchId}/status`).then(r => r.json()).then(d => {
+      if (d.error) return;
+      box.querySelector('.batch-lines').innerHTML = d.children.map(c =>
+        `<div>${disparoEscapeHtml(c.name)}: ${c.status} — enviados ${c.sent}/${c.quota} • falhas ${c.failed}</div>`
+      ).join('') + `<div class="mt-1 font-medium text-zinc-300">Total: ${d.sent}/${d.total} enviados (${d.pct}%)</div>`;
+      if (d.status === 'running') {
+        setTimeout(tick, 1500);
+      } else {
+        stopBtn.classList.add('hidden');
+      }
+    });
+  }
+  tick();
+}
+
+// ── travar tab ───────────────────────────────────────────────────────────────
+
+function renderTravarSummary() {
+  const ids = Object.keys(DISPARO_ALL_WABAS);
+  document.getElementById('travarWabaSummary').textContent =
+    ids.map(id => DISPARO_ALL_WABAS[id].name).join(', ') || 'Nenhuma conta selecionada.';
+}
+
+function addTravarParamRow() {
+  disparoTravarParamMap.push({ name: '', column: '' });
+  renderTravarParamRows();
+}
+function removeTravarParamRow(i) {
+  disparoTravarParamMap.splice(i, 1);
+  renderTravarParamRows();
+}
+function renderTravarParamRows() {
+  const cols = (disparoListState && disparoListState.columns) || [];
+  const wrap = document.getElementById('travarParamRows');
+  wrap.innerHTML = disparoTravarParamMap.map((pm, i) => `
+    <div class="flex items-center gap-2">
+      <input class="param-name-input flex-1 px-2 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-xs" placeholder="nome da variável" value="${disparoEscapeHtml(pm.name)}" data-idx="${i}">
+      <span class="text-zinc-600">→</span>
+      <select class="param-col-select flex-1 px-2 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-xs" data-idx="${i}">
+        <option value="">selecione a coluna</option>
+        ${cols.map(c => `<option value="${disparoEscapeHtml(c)}" ${pm.column === c ? 'selected' : ''}>${disparoEscapeHtml(c)}</option>`).join('')}
+      </select>
+      <button type="button" onclick="removeTravarParamRow(${i})" class="text-xs px-2 py-1 rounded-lg bg-red-950/40 border border-red-800 text-red-300">x</button>
+    </div>`).join('');
+
+  wrap.querySelectorAll('.param-name-input').forEach(inp => {
+    inp.addEventListener('input', e => { disparoTravarParamMap[Number(e.target.dataset.idx)].name = e.target.value; });
+  });
+  wrap.querySelectorAll('.param-col-select').forEach(sel => {
+    sel.addEventListener('change', e => { disparoTravarParamMap[Number(e.target.dataset.idx)].column = e.target.value; });
+  });
+}
+
+function fireTravar() {
+  const ids = Object.keys(DISPARO_ALL_WABAS);
+  if (!disparoListState) { alert('Envie uma lista primeiro.'); return; }
+  const phoneCol = currentPhoneCol();
+  if (!phoneCol) { alert('Selecione a coluna do telefone.'); return; }
+  if (!ids.length) { alert('Selecione ao menos um BM.'); return; }
+  if (!confirm(`Confirma travar ${ids.length} conta(s)? Isso vai forçar erro de envio proposital.`)) return;
+
+  const progress = document.getElementById('travarProgress');
+  progress.innerHTML = '';
+
+  fetch("{{ url_for('disparar.travar_start') }}", {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      waba_ids: ids,
+      list_id: disparoListState.list_id,
+      phone_col: phoneCol,
+      param_map: disparoTravarParamMap,
+      max_workers: disparoSpeedValue,
+    }),
+  }).then(r => r.json()).then(d => {
+    if (d.errors && d.errors.length) {
+      progress.innerHTML = `<div class="text-amber-400 text-xs">${d.errors.map(disparoEscapeHtml).join('<br>')}</div>`;
+    }
+    if (d.batch_id) pollDisparoBatch(d.batch_id, progress);
+  });
+}
+
+// ── utils ──────────────────────────────────────────────────────────────────
+function disparoEscapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+document.getElementById('disparoModalOverlay')?.addEventListener('click', (e) => {
+  if (e.target.id === 'disparoModalOverlay') closeDisparoModal();
+});
+setupListDropzone();
+</script>

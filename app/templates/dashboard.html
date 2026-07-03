@@ -1,0 +1,1256 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!--  SUMMARY CARDS                                                           -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<div class="rounded-2xl border border-zinc-800 bg-zinc-900/30 p-4 mb-4">
+  <div class="flex items-center justify-between mb-3">
+    <div class="text-sm font-semibold text-zinc-300">Resumo</div>
+    <!-- Date controls -->
+    <div class="flex flex-wrap items-end gap-2">
+      <div>
+        <label class="block text-[10px] text-zinc-500 mb-1">De</label>
+        <input type="date" id="dash-start"
+               class="px-2.5 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-xs focus:outline-none focus:border-indigo-500">
+      </div>
+      <div>
+        <label class="block text-[10px] text-zinc-500 mb-1">Até</label>
+        <input type="date" id="dash-end"
+               class="px-2.5 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-xs focus:outline-none focus:border-indigo-500">
+      </div>
+      <button type="button" onclick="fetchDashboardAnalytics()"
+              class="px-3 py-1.5 rounded-lg bg-indigo-700 hover:bg-indigo-600 text-xs font-semibold transition-colors">
+        Buscar
+      </button>
+      <!-- Presets -->
+      <div class="flex gap-1">
+        <button type="button" onclick="dashSetPreset('hoje')"   class="px-2 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-[11px]">Hoje</button>
+        <button type="button" onclick="dashSetPreset('ontem')"  class="px-2 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-[11px]">Ontem</button>
+        <button type="button" onclick="dashSetPreset('semana')" class="px-2 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-[11px]">Esta semana</button>
+        <button type="button" onclick="dashSetPreset('mes')"    class="px-2 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-[11px]">Este mês</button>
+        <button type="button" onclick="dashSetPreset('7d')"     class="px-2 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-[11px]">7d</button>
+        <button type="button" onclick="dashSetPreset('30d')"    class="px-2 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-[11px]">30d</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cards -->
+  <div class="grid grid-cols-3 gap-3">
+    <div class="rounded-xl border border-zinc-800 bg-zinc-900 p-3 text-center">
+      <div class="text-[10px] text-zinc-500 uppercase tracking-wide">WABAs disparadas</div>
+      <div id="dash-stat-disparadas" class="text-2xl font-bold text-violet-400 mt-1">…</div>
+    </div>
+    <div class="rounded-xl border border-zinc-800 bg-zinc-900 p-3 text-center">
+      <div class="text-[10px] text-zinc-500 uppercase tracking-wide">Enviados</div>
+      <div id="dash-stat-sent" class="text-2xl font-bold text-emerald-400 mt-1">…</div>
+    </div>
+    <div class="rounded-xl border border-zinc-800 bg-zinc-900 p-3 text-center">
+      <div class="text-[10px] text-zinc-500 uppercase tracking-wide">Entregues</div>
+      <div id="dash-stat-delivered" class="text-2xl font-bold text-blue-400 mt-1">…</div>
+    </div>
+  </div>
+
+  <!-- Error / partial-failure notice -->
+  <div id="dash-analytics-error" class="hidden mt-3 rounded-lg border border-yellow-700 bg-yellow-950/40 px-3 py-2 text-xs text-yellow-300"></div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!--  AÇÕES + TABLE                                                             -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<div class="rounded-2xl border border-zinc-800 bg-zinc-900/30 p-4 mb-4">
+  <div class="flex items-center justify-between gap-3">
+    <div>
+      <div class="text-sm text-zinc-300">Ações</div>
+      <div class="text-xs text-zinc-500">
+        Clique no ícone de recarregar para buscar dados no Meta. Não atualiza automaticamente ao abrir a página.
+      </div>
+      <div id="syncStatus" class="hidden text-xs mt-1 text-zinc-400"></div>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <!-- Refresh button -->
+      <button id="syncBtn" type="button"
+              title="Recarregar dados do Meta"
+              onclick="startSync()"
+              class="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700">
+        <svg id="syncIcon" xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12a9 9 0 1 1-3-6.7"/>
+          <path d="M21 3v6h-6"/>
+        </svg>
+      </button>
+      <button id="syncStopBtn" type="button"
+              onclick="stopSync()"
+              class="hidden px-3 py-2 rounded-xl bg-red-900/60 hover:bg-red-800/60 text-red-300 border border-red-800/40 text-xs">
+        Parar
+      </button>
+
+      <!-- Clipboard button -->
+      <button type="button"
+              title="Copiar WABA ID + Token dos selecionados"
+              onclick="copySelected()"
+              class="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="9" y="2" width="6" height="4" rx="1"></rect>
+          <path d="M9 4H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"></path>
+        </svg>
+      </button>
+
+      <!-- Delete selected button -->
+      <button type="button"
+              title="Excluir WABAs selecionadas"
+              onclick="openDeleteModal(null)"
+              class="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-red-900/60 text-zinc-400 hover:text-red-300 transition-colors">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6"></polyline>
+          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+          <path d="M10 11v6"></path><path d="M14 11v6"></path>
+          <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+        </svg>
+      </button>
+
+      <!-- Add templates button -->
+      <button type="button"
+              title="Adicionar templates às WABAs selecionadas"
+              onclick="openTplModal()"
+              class="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-purple-900/60 text-zinc-400 hover:text-purple-300 transition-colors">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="12" y1="18" x2="12" y2="12"/>
+          <line x1="9" y1="15" x2="15" y2="15"/>
+        </svg>
+      </button>
+
+      <button type="button" onclick="openModal()"
+              class="px-4 py-2 rounded-xl bg-indigo-700 hover:bg-indigo-600 text-sm font-semibold">
+        + Adicionar WABA
+      </button>
+
+      <button type="button" onclick="openDisparoModal()"
+              class="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-sm font-semibold">
+        Disparar
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Filter bar ── -->
+  <div id="filterBar" class="mt-4 rounded-xl border border-zinc-800 bg-zinc-900/20 p-3">
+    <div class="flex flex-wrap items-center gap-2">
+
+      <!-- Search -->
+      <div class="relative">
+        <svg xmlns="http://www.w3.org/2000/svg" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input id="filter-search" type="text" placeholder="Buscar WABA, ID ou telefone…"
+               class="pl-8 pr-3 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-xs text-zinc-200 placeholder-zinc-600 outline-none focus:border-zinc-500 w-56">
+      </div>
+
+      <!-- Status -->
+      <div class="filter-dropdown relative">
+        <button type="button" onclick="_filterToggleDropdown(this)"
+                class="filter-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-300 text-xs hover:bg-zinc-700 transition-colors">
+          Status
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div id="filter-panel-status" class="filter-panel hidden absolute top-full left-0 mt-1 z-30 min-w-[190px] rounded-xl border border-zinc-700 bg-zinc-950 shadow-xl p-2">
+          <div class="filter-options space-y-0.5"><!-- built by JS --></div>
+        </div>
+      </div>
+
+      <!-- Travada -->
+      <div class="filter-dropdown relative">
+        <button type="button" onclick="_filterToggleDropdown(this)"
+                class="filter-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-300 text-xs hover:bg-zinc-700 transition-colors">
+          Travada
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="filter-panel hidden absolute top-full left-0 mt-1 z-30 min-w-[130px] rounded-xl border border-zinc-700 bg-zinc-950 shadow-xl p-2">
+          <div class="space-y-0.5">
+            <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-800 cursor-pointer">
+              <input type="checkbox" class="filter-cb w-3.5 h-3.5 accent-indigo-500" data-filter="travada" value="1">
+              <span class="text-xs text-zinc-300">Sim</span>
+            </label>
+            <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-800 cursor-pointer">
+              <input type="checkbox" class="filter-cb w-3.5 h-3.5 accent-indigo-500" data-filter="travada" value="0">
+              <span class="text-xs text-zinc-300">Não</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Disparou -->
+      <div class="filter-dropdown relative">
+        <button type="button" onclick="_filterToggleDropdown(this)"
+                class="filter-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-300 text-xs hover:bg-zinc-700 transition-colors">
+          Disparou
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="filter-panel hidden absolute top-full left-0 mt-1 z-30 min-w-[140px] rounded-xl border border-zinc-700 bg-zinc-950 shadow-xl p-2">
+          <div class="space-y-0.5">
+            <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-800 cursor-pointer">
+              <input type="checkbox" class="filter-cb w-3.5 h-3.5 accent-indigo-500" data-filter="disparou" value="1">
+              <span class="text-xs text-zinc-300">Sim (últimas 24h)</span>
+            </label>
+            <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-800 cursor-pointer">
+              <input type="checkbox" class="filter-cb w-3.5 h-3.5 accent-indigo-500" data-filter="disparou" value="0">
+              <span class="text-xs text-zinc-300">Não</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Limite -->
+      <div class="filter-dropdown relative">
+        <button type="button" onclick="_filterToggleDropdown(this)"
+                class="filter-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-300 text-xs hover:bg-zinc-700 transition-colors">
+          Limite
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div id="filter-panel-tier" class="filter-panel hidden absolute top-full left-0 mt-1 z-30 min-w-[160px] rounded-xl border border-zinc-700 bg-zinc-950 shadow-xl p-2">
+          <div class="filter-options space-y-0.5"><!-- built by JS --></div>
+        </div>
+      </div>
+
+      <!-- Telefone -->
+      <div class="filter-dropdown relative">
+        <button type="button" onclick="_filterToggleDropdown(this)"
+                class="filter-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-300 text-xs hover:bg-zinc-700 transition-colors">
+          Telefone
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="filter-panel hidden absolute top-full left-0 mt-1 z-30 min-w-[160px] rounded-xl border border-zinc-700 bg-zinc-950 shadow-xl p-2">
+          <div class="space-y-0.5">
+            <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-800 cursor-pointer">
+              <input type="checkbox" class="filter-cb w-3.5 h-3.5 accent-indigo-500" data-filter="phone" value="hasphone_1">
+              <span class="text-xs text-zinc-300">Com número</span>
+            </label>
+            <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-800 cursor-pointer">
+              <input type="checkbox" class="filter-cb w-3.5 h-3.5 accent-indigo-500" data-filter="phone" value="hasphone_0">
+              <span class="text-xs text-zinc-300">Sem número</span>
+            </label>
+            <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-800 cursor-pointer">
+              <input type="checkbox" class="filter-cb w-3.5 h-3.5 accent-indigo-500" data-filter="phone" value="connected_1">
+              <span class="text-xs text-emerald-400">Conectado</span>
+            </label>
+            <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-800 cursor-pointer">
+              <input type="checkbox" class="filter-cb w-3.5 h-3.5 accent-indigo-500" data-filter="phone" value="connected_0">
+              <span class="text-xs text-yellow-400">Pendente</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Templates -->
+      <div class="filter-dropdown relative">
+        <button type="button" onclick="_filterToggleDropdown(this)"
+                class="filter-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-300 text-xs hover:bg-zinc-700 transition-colors">
+          Templates
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="filter-panel hidden absolute top-full left-0 mt-1 z-30 min-w-[180px] rounded-xl border border-zinc-700 bg-zinc-950 shadow-xl p-2">
+          <div class="space-y-0.5">
+            <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-800 cursor-pointer">
+              <input type="checkbox" class="filter-cb w-3.5 h-3.5 accent-indigo-500" data-filter="tpl" value="approved">
+              <span class="text-xs text-emerald-400">Tem aprovado</span>
+            </label>
+            <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-800 cursor-pointer">
+              <input type="checkbox" class="filter-cb w-3.5 h-3.5 accent-indigo-500" data-filter="tpl" value="paused">
+              <span class="text-xs text-yellow-400">Tem pausado</span>
+            </label>
+            <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-800 cursor-pointer">
+              <input type="checkbox" class="filter-cb w-3.5 h-3.5 accent-indigo-500" data-filter="tpl" value="rejected">
+              <span class="text-xs text-red-400">Tem reprovado/desativado</span>
+            </label>
+            <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-800 cursor-pointer">
+              <input type="checkbox" class="filter-cb w-3.5 h-3.5 accent-indigo-500" data-filter="tpl" value="pending">
+              <span class="text-xs text-zinc-400">Tem pendente/analisando</span>
+            </label>
+            <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-800 cursor-pointer">
+              <input type="checkbox" class="filter-cb w-3.5 h-3.5 accent-indigo-500" data-filter="tpl" value="none">
+              <span class="text-xs text-zinc-500">Sem templates</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Saúde -->
+      <div class="filter-dropdown relative">
+        <button type="button" onclick="_filterToggleDropdown(this)"
+                class="filter-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-300 text-xs hover:bg-zinc-700 transition-colors">
+          Saúde
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="filter-panel hidden absolute top-full left-0 mt-1 z-30 min-w-[170px] rounded-xl border border-zinc-700 bg-zinc-950 shadow-xl p-2">
+          <div class="space-y-0.5">
+            <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-800 cursor-pointer">
+              <input type="checkbox" class="filter-cb w-3.5 h-3.5 accent-indigo-500" data-filter="health" value="1">
+              <span class="text-xs text-teal-300">Pronta (testada 24h)</span>
+            </label>
+            <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-800 cursor-pointer">
+              <input type="checkbox" class="filter-cb w-3.5 h-3.5 accent-indigo-500" data-filter="health" value="0">
+              <span class="text-xs text-zinc-400">Não testada</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Counter + Clear -->
+      <div class="ml-auto flex items-center gap-2">
+        <span id="filter-counter" class="text-xs text-zinc-500"></span>
+        <span id="filter-active-badge" class="hidden text-xs font-semibold text-indigo-300"></span>
+        <button id="filter-clear-btn" type="button"
+                class="hidden px-2.5 py-1 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-xs text-zinc-300 transition-colors">
+          Limpar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-4 overflow-x-auto">
+    <table class="min-w-full text-sm">
+      <thead class="text-zinc-400">
+        <tr class="border-b border-zinc-800">
+          <th class="text-left py-2 pr-3">
+            <input type="checkbox" id="selectAll" title="Selecionar / desselecionar todos"
+                   onchange="toggleSelectAll(this.checked)"
+                   class="w-4 h-4 accent-emerald-600">
+          </th>
+          <th class="text-left py-2">WABA</th>
+          <th class="text-left py-2">Telefone</th>
+          <th class="text-left py-2">Templates</th>
+          <th class="text-left py-2">Travada</th>
+          <th class="text-left py-2">Disparou</th>
+          <th class="text-left py-2">Último Disparo</th>
+          <th class="text-left py-2">Status</th>
+          <th class="text-left py-2">Limite</th>
+          <th class="py-2 w-10"></th>
+        </tr>
+      </thead>
+
+      <tbody class="text-zinc-200">
+        {% for row in rows %}
+        <tr class="border-b border-zinc-900 group filter-row"
+            data-status="{{ row.status_label or 'OK' }}"
+            data-travada="{{ '1' if row.ever_had_erro_generic else '0' }}"
+            data-disparou="{{ '1' if row.disparou else '0' }}"
+            data-health="{{ '1' if row.health_ok else '0' }}"
+            data-tier="{{ row.messaging_limit_tier or 'NONE' }}"
+            data-hasphone="{{ '1' if row.phone_numbers else '0' }}"
+            data-phoneconnected="{{ '1' if row.phone_numbers and (row.phone_numbers | selectattr('status','equalto','CONNECTED') | list) else '0' }}"
+            data-tpl-approved="{{ '1' if row.t.get('APPROVED',0) else '0' }}"
+            data-tpl-paused="{{ '1' if row.t.get('PAUSED',0) else '0' }}"
+            data-tpl-rejected="{{ '1' if (row.t.get('REJECTED',0) + row.t.get('DISABLED',0)) else '0' }}"
+            data-tpl-pending="{{ '1' if row.t.get('PENDING',0) else '0' }}"
+            data-tpl-any="{{ '1' if (row.t.get('APPROVED',0)+row.t.get('PAUSED',0)+row.t.get('REJECTED',0)+row.t.get('DISABLED',0)+row.t.get('PENDING',0)+row.t.get('OTHER',0)) else '0' }}"
+            data-search="{{ (row.waba_name ~ ' ' ~ row.waba_id ~ ' ' ~ (row.phone_numbers | map(attribute='display_phone_number') | join(' '))) | lower | e }}">
+          <td class="py-3 pr-3">
+            <input type="checkbox" name="waba_ids" value="{{ row.waba_id }}"
+                   data-waba-name="{{ row.waba_name }}"
+                   class="w-4 h-4 accent-emerald-600" onchange="syncSelectAll()">
+          </td>
+
+          <td class="py-3">
+            <span class="font-semibold">{{ row.waba_name }}</span>
+            <div class="text-xs text-zinc-500">{{ row.waba_id }}</div>
+
+            {% if row.last_error %}
+              <div class="relative inline-block group/err mt-1">
+                <button type="button"
+                        class="inline-flex items-center gap-1 text-red-400 hover:text-red-300 transition-colors"
+                        data-waba-id="{{ row.waba_id }}"
+                        data-waba-name="{{ row.waba_name | e }}"
+                        data-last-error="{{ row.last_error | e }}"
+                        onclick="openErrorModal(this)">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none"
+                       stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                    <line x1="12" y1="9" x2="12" y2="13"></line>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                  </svg>
+                  <span class="text-xs font-semibold">1 erro</span>
+                </button>
+                <div class="pointer-events-none absolute left-0 top-full mt-1 z-40 w-80 hidden group-hover/err:block
+                            rounded-xl border border-red-900/60 bg-zinc-950 shadow-xl p-3 space-y-2">
+                  <div>
+                    <div class="text-xs font-semibold text-red-400 mb-0.5">Erro sync</div>
+                    <div class="text-xs text-zinc-300 break-words line-clamp-3">{{ row.last_error | truncate(160, True) }}</div>
+                  </div>
+                  <div class="text-xs text-zinc-500 pt-1 border-t border-zinc-800">Clique para ver detalhes completos</div>
+                </div>
+              </div>
+            {% endif %}
+          </td>
+
+          <td class="py-3">
+            {% if row.phone_numbers %}
+              {% for p in row.phone_numbers %}
+                <div class="mb-1">
+                  {% if p.status == "CONNECTED" %}
+                    <span class="px-2 py-1 rounded-lg bg-emerald-950/40 border border-emerald-800 text-emerald-200 text-xs"
+                          title="Conectado">
+                      {{ p.display_phone_number }}
+                    </span>
+                  {% else %}
+                    <span class="px-2 py-1 rounded-lg bg-yellow-950/40 border border-yellow-800 text-yellow-200 text-xs"
+                          title="{{ p.status or 'PENDING' }}">
+                      {{ p.display_phone_number }}
+                    </span>
+                  {% endif %}
+                </div>
+              {% endfor %}
+            {% else %}
+              <span class="text-zinc-500">—</span>
+            {% endif %}
+          </td>
+
+          <td class="py-3">
+            <span class="text-emerald-400">{{ row.t.get('APPROVED', 0) }}</span> /
+            <span class="text-yellow-400">{{ row.t.get('PAUSED', 0) }}</span> /
+            <span class="text-red-400">{{ row.t.get('REJECTED', 0) + row.t.get('DISABLED', 0) }}</span> /
+            <span class="text-zinc-400">{{ row.t.get('PENDING', 0) }}</span>
+            {% if row.t.get('OTHER', 0) %}
+              <span class="text-zinc-600"> / {{ row.t.get('OTHER', 0) }}</span>
+            {% endif %}
+          </td>
+
+          {# Travada — green if ever had ERRO GENERIC, red otherwise #}
+          <td class="py-3 text-center">
+            {% if row.ever_had_erro_generic %}
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-emerald-400 inline-block" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            {% else %}
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-red-400 inline-block" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            {% endif %}
+          </td>
+
+          {# Disparou — green if 500+ 200 OK cumulative in last 24h #}
+          <td class="py-3 text-center">
+            {% if row.disparou %}
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-emerald-400 inline-block" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            {% else %}
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-red-400 inline-block" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            {% endif %}
+          </td>
+
+          <td class="py-3 text-xs text-zinc-400 font-mono">
+            {{ row.ultimo_disparo or "—" }}
+          </td>
+
+          <td class="py-3">
+            <div class="inline-flex items-center gap-1 flex-wrap"
+                 id="statusCell_{{ row.waba_id }}">
+            {% if row.status_label == "DESATIVADA" %}
+              <span class="px-2 py-0.5 rounded text-xs font-bold bg-red-900/60 text-red-300">DESATIVADA</span>
+            {% elif row.status_label == "LIMITADA" %}
+              <span class="px-2 py-0.5 rounded text-xs font-bold bg-yellow-900/60 text-yellow-300">LIMITADA</span>
+            {% elif row.status_label == "PROBLEMA CARTÃO" %}
+              <span class="px-2 py-0.5 rounded text-xs font-bold bg-orange-900/60 text-orange-300">PROBLEMA CARTÃO</span>
+            {% elif row.status_label == "ERRO GENERIC" %}
+              <span class="px-2 py-0.5 rounded text-xs font-bold bg-blue-900/60 text-blue-300">ERRO GENERIC</span>
+            {% elif row.status_label == "Developers Travado" %}
+              <span class="px-2 py-0.5 rounded text-xs font-bold bg-yellow-900/60 text-yellow-400">Developers Travado</span>
+            {% elif row.status_label == "Erro" %}
+              <span class="px-2 py-0.5 rounded text-xs font-bold bg-red-900/60 text-red-400">Erro</span>
+            {% elif row.status_label == "DESABILITADA" %}
+              <span class="px-2 py-0.5 rounded text-xs font-bold bg-red-900/60 text-red-300">DESABILITADA</span>
+            {% elif row.status_label == "PERMANENTE" %}
+              <span class="px-2 py-0.5 rounded text-xs font-bold bg-red-900/60 text-red-300">PERMANENTE</span>
+            {% elif row.status_label == "RESTRITA" %}
+              <span class="px-2 py-0.5 rounded text-xs font-bold bg-orange-900/60 text-orange-300">RESTRITA</span>
+            {% elif row.status_label == "ANALISANDO" %}
+              <span class="px-2 py-0.5 rounded text-xs font-bold bg-zinc-700/60 text-zinc-300">ANALISANDO</span>
+            {% elif row.status_label == "RETENÇÃO" %}
+              <span class="px-2 py-0.5 rounded text-xs font-bold bg-amber-900/60 text-amber-300">RETENÇÃO</span>
+            {% else %}
+              <span class="px-2 py-0.5 rounded text-xs font-bold bg-emerald-900/60 text-emerald-300">OK</span>
+            {% endif %}
+            {% if row.health_ok %}
+              <span class="health-ok-badge px-2 py-0.5 rounded text-xs font-bold bg-teal-900/60 text-teal-300" title="Teste de disparo aprovado nas últimas 24h">✓ pronta</span>
+            {% endif %}
+            </div>
+          </td>
+
+          <td class="py-3">
+            {% set raw = row.messaging_limit_tier %}
+            {% if raw %}
+              {% set tier_label = '∞' if raw == 'TIER_UNLIMITED' else raw.replace('TIER_', '') %}
+              <span class="px-2 py-0.5 rounded text-xs font-bold bg-zinc-700/60 text-zinc-300">{{ tier_label }}</span>
+            {% else %}
+              <span class="text-zinc-500">—</span>
+            {% endif %}
+          </td>
+
+          <td class="py-3 text-right">
+            <div class="inline-flex items-center gap-0.5">
+              <button type="button"
+                      title="{{ row.remarks if row.remarks else 'Adicionar observação' }}"
+                      data-waba-id="{{ row.waba_id }}"
+                      data-remarks="{{ row.remarks | e }}"
+                      onclick="openRemarksModal(this.dataset.wabaId, this.dataset.remarks)"
+                      class="p-1.5 rounded-lg text-zinc-700 group-hover:text-zinc-400 hover:!text-yellow-400 hover:bg-yellow-950/40 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 20h9"></path>
+                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path>
+                </svg>
+              </button>
+              <button type="button"
+                      title="Excluir esta WABA"
+                      onclick="openDeleteModal('{{ row.waba_id }}', '{{ row.waba_name | e }}')"
+                      class="p-1.5 rounded-lg text-zinc-700 group-hover:text-zinc-400 hover:!text-red-400 hover:bg-red-950/40 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+                  <path d="M10 11v6"></path><path d="M14 11v6"></path>
+                  <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+                </svg>
+              </button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+
+        {% if not rows %}
+        <tr class="border-b border-zinc-900">
+          <td class="py-6 text-zinc-500" colspan="10">Nenhum WABA cadastrado ainda.</td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{# ── Add WABA modal ── #}
+<div id="modalBg" class="fixed inset-0 bg-black/60 hidden items-center justify-center p-4 z-50">
+  <div class="w-full max-w-xl rounded-2xl border border-zinc-800 bg-zinc-950 p-5">
+    <div class="flex items-center justify-between mb-3">
+      <div>
+        <div class="text-lg font-semibold">Adicionar WABA</div>
+        <div class="text-xs text-zinc-500">WABA ID e Token são obrigatórios.</div>
+      </div>
+      <button onclick="closeModal()" class="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sm">Fechar</button>
+    </div>
+
+    <form method="POST" action="{{ url_for('wabas.add') }}" class="space-y-3">
+      <div>
+        <label class="text-xs text-zinc-400">WABA ID</label>
+        <input name="waba_id" class="w-full mt-1 px-4 py-3 rounded-xl bg-zinc-950 border border-zinc-800 outline-none focus:border-zinc-500 text-sm" required />
+      </div>
+      <div>
+        <label class="text-xs text-zinc-400">Token</label>
+        <textarea name="token" rows="4" class="w-full mt-1 px-4 py-3 rounded-xl bg-zinc-950 border border-zinc-800 outline-none focus:border-zinc-500 text-sm" required></textarea>
+      </div>
+      <div>
+        <label class="text-xs text-zinc-400">AdsPower Profile ID <span class="text-zinc-600">(opcional)</span></label>
+        <input name="adspower_profile_id" class="w-full mt-1 px-4 py-3 rounded-xl bg-zinc-950 border border-zinc-800 outline-none focus:border-zinc-500 text-sm font-mono" placeholder="ex: k1abc23" />
+      </div>
+      <button class="w-full px-4 py-3 rounded-xl bg-indigo-700 hover:bg-indigo-600 font-semibold">Salvar</button>
+    </form>
+  </div>
+</div>
+
+{# ── Delete modal ── #}
+<div id="deleteModalBg" class="fixed inset-0 bg-black/60 hidden items-center justify-center p-4 z-50">
+  <div class="w-full max-w-lg rounded-2xl border border-zinc-800 bg-zinc-950 p-5">
+    <div class="flex items-center gap-3 mb-4">
+      <div class="w-9 h-9 rounded-xl bg-red-950/50 border border-red-800/50 flex items-center justify-center shrink-0">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-red-400" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6"></polyline>
+          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+          <path d="M10 11v6"></path><path d="M14 11v6"></path>
+          <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+        </svg>
+      </div>
+      <div>
+        <div class="text-base font-semibold">Excluir WABAs</div>
+        <div class="text-xs text-zinc-500">Esta ação remove as WABAs do sistema. Não pode ser desfeita.</div>
+      </div>
+    </div>
+
+    <div class="mb-4">
+      <div class="text-xs text-zinc-400 mb-2">WABAs que serão excluídas:</div>
+      <ul id="deleteModalList" class="space-y-1 max-h-48 overflow-y-auto"></ul>
+    </div>
+
+    <div class="flex items-center justify-end gap-3">
+      <button onclick="closeDeleteModal()"
+              class="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sm">
+        Cancelar
+      </button>
+      <button id="btnConfirmDelete" onclick="confirmDelete()"
+              class="px-5 py-2 rounded-xl bg-red-700 hover:bg-red-600 text-sm font-semibold">
+        Confirmar exclusão
+      </button>
+    </div>
+  </div>
+</div>
+
+{# ── Error detail modal ── #}
+<div id="errorModalBg" class="fixed inset-0 bg-black/60 hidden items-center justify-center p-4 z-50">
+  <div class="w-full max-w-2xl rounded-2xl border border-zinc-800 bg-zinc-950 p-5 max-h-[85vh] overflow-y-auto">
+    <div class="flex items-center gap-3 mb-4">
+      <div class="w-9 h-9 rounded-xl bg-red-950/50 border border-red-800/50 flex items-center justify-center shrink-0">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-red-400" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+          <line x1="12" y1="9" x2="12" y2="13"></line>
+          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+      </div>
+      <div>
+        <div class="font-semibold text-zinc-100">Erros da WABA</div>
+        <div id="errorModalSubtitle" class="text-xs text-zinc-400"></div>
+      </div>
+    </div>
+    <div id="errorModalBody" class="space-y-4 text-sm"></div>
+    <div class="flex justify-end mt-5">
+      <button type="button" onclick="closeErrorModal()"
+              class="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sm text-zinc-300">
+        Fechar
+      </button>
+    </div>
+  </div>
+</div>
+
+{# ── Remarks modal ── #}
+<div id="remarksModalBg" class="fixed inset-0 bg-black/60 hidden items-center justify-center p-4 z-50">
+  <div class="w-full max-w-lg rounded-2xl border border-zinc-800 bg-zinc-950 p-5">
+    <div class="flex items-center gap-3 mb-4">
+      <div class="w-9 h-9 rounded-xl bg-yellow-950/50 border border-yellow-800/50 flex items-center justify-center shrink-0">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-yellow-400" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 20h9"></path>
+          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path>
+        </svg>
+      </div>
+      <div>
+        <div class="font-semibold text-zinc-100">Observações</div>
+        <div id="remarksModalSubtitle" class="text-xs text-zinc-400"></div>
+      </div>
+    </div>
+    <textarea id="remarksText" rows="5"
+              class="w-full rounded-xl border border-zinc-700 bg-zinc-900 text-sm text-zinc-100 px-3 py-2 resize-none focus:outline-none focus:border-yellow-600 placeholder-zinc-600"
+              placeholder="Escreva suas observações sobre esta WABA…"></textarea>
+    <div class="flex justify-end gap-2 mt-4">
+      <button type="button" onclick="closeRemarksModal()"
+              class="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sm text-zinc-300">
+        Cancelar
+      </button>
+      <button type="button" onclick="saveRemarks()"
+              class="px-5 py-2 rounded-xl bg-yellow-700 hover:bg-yellow-600 text-sm font-semibold text-white">
+        Salvar
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Add WABA modal ──────────────────────────────────────────────────────────
+function openModal() {
+  const bg = document.getElementById("modalBg");
+  bg.classList.remove("hidden");
+  bg.classList.add("flex");
+}
+function closeModal() {
+  const bg = document.getElementById("modalBg");
+  bg.classList.add("hidden");
+  bg.classList.remove("flex");
+}
+document.getElementById("modalBg")?.addEventListener("click", (e) => {
+  if (e.target.id === "modalBg") closeModal();
+});
+
+// ── Delete modal ────────────────────────────────────────────────────────────
+let _deleteIds   = [];
+let _deleteNames = {};
+
+function openDeleteModal(singleId, singleName) {
+  if (singleId) {
+    _deleteIds = [singleId];
+    _deleteNames = { [singleId]: singleName || singleId };
+  } else {
+    const checks = Array.from(document.querySelectorAll('input[name="waba_ids"]:checked'));
+    if (!checks.length) {
+      alert("Selecione pelo menos 1 WABA para excluir.");
+      return;
+    }
+    _deleteIds   = checks.map(c => c.value);
+    _deleteNames = Object.fromEntries(
+      checks.map(c => [c.value, c.dataset.wabaName || c.value])
+    );
+  }
+
+  const list = document.getElementById("deleteModalList");
+  list.innerHTML = _deleteIds.map(id => `
+    <li class="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800">
+      <span class="text-red-400 text-xs">✕</span>
+      <span class="text-sm font-semibold text-zinc-200">${escHtml(_deleteNames[id] || id)}</span>
+      <span class="text-xs text-zinc-500 font-mono ml-auto">${escHtml(id)}</span>
+    </li>
+  `).join("");
+
+  const bg = document.getElementById("deleteModalBg");
+  bg.classList.remove("hidden");
+  bg.classList.add("flex");
+}
+
+function closeDeleteModal() {
+  const bg = document.getElementById("deleteModalBg");
+  bg.classList.add("hidden");
+  bg.classList.remove("flex");
+  _deleteIds   = [];
+  _deleteNames = {};
+}
+
+document.getElementById("deleteModalBg")?.addEventListener("click", (e) => {
+  if (e.target.id === "deleteModalBg") closeDeleteModal();
+});
+
+async function confirmDelete() {
+  if (!_deleteIds.length) return;
+
+  const btn = document.getElementById("btnConfirmDelete");
+  btn.disabled = true;
+  btn.textContent = "Excluindo…";
+
+  const res = await fetch("{{ url_for('dashboard.delete_wabas') }}", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ waba_ids: _deleteIds }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok || data.error) {
+    alert("Erro ao excluir: " + (data.error || res.status));
+    btn.disabled = false;
+    btn.textContent = "Confirmar exclusão";
+    return;
+  }
+
+  closeDeleteModal();
+  window.location.reload();
+}
+
+// ── Clipboard ───────────────────────────────────────────────────────────────
+async function copySelected() {
+  const checks = Array.from(document.querySelectorAll('input[name="waba_ids"]:checked'));
+  if (!checks.length) {
+    alert("Selecione pelo menos 1 WABA para copiar.");
+    return;
+  }
+
+  const wabaIds = checks.map(c => c.value);
+
+  const res = await fetch("{{ url_for('dashboard.export_selected') }}", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ waba_ids: wabaIds })
+  });
+
+  if (!res.ok) {
+    alert("Erro ao gerar JSON para copiar.");
+    return;
+  }
+
+  const data = await res.json();
+  const text = JSON.stringify(data, null, 4);
+
+  try {
+    await navigator.clipboard.writeText(text);
+    alert("Copiado para a área de transferência!");
+  } catch (e) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    alert("Copiado para a área de transferência!");
+  }
+}
+
+// ── Remarks modal ───────────────────────────────────────────────────────────
+let _remarksWabaId = null;
+
+function openRemarksModal(wabaId, currentText) {
+  _remarksWabaId = wabaId;
+  document.getElementById("remarksText").value = currentText || "";
+  document.getElementById("remarksModalSubtitle").textContent = "WABA " + wabaId;
+  const bg = document.getElementById("remarksModalBg");
+  bg.classList.remove("hidden");
+  bg.classList.add("flex");
+}
+
+function closeRemarksModal() {
+  const bg = document.getElementById("remarksModalBg");
+  bg.classList.add("hidden");
+  bg.classList.remove("flex");
+  _remarksWabaId = null;
+}
+
+async function saveRemarks() {
+  if (!_remarksWabaId) return;
+  const text = document.getElementById("remarksText").value;
+  const res = await fetch(`/waba/${_remarksWabaId}/remarks`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ text })
+  });
+  if (!res.ok) { alert("Erro ao salvar observação."); return; }
+  const btn = document.querySelector(`button[data-waba-id="${_remarksWabaId}"][data-remarks]`);
+  if (btn) {
+    btn.dataset.remarks = text;
+    btn.title = text || "Adicionar observação";
+  }
+  closeRemarksModal();
+}
+
+document.getElementById("remarksModalBg")?.addEventListener("click", (e) => {
+  if (e.target.id === "remarksModalBg") closeRemarksModal();
+});
+
+// ── Error modal ──────────────────────────────────────────────────────────────
+function openErrorModal(btn) {
+  const wabaName  = btn.dataset.wabaName || "";
+  const wabaId    = btn.dataset.wabaId   || "";
+  const syncErr   = btn.dataset.lastError || "";
+
+  document.getElementById("errorModalSubtitle").textContent =
+    (wabaName ? wabaName + " — " : "") + wabaId;
+
+  let html = "";
+  if (syncErr) html += _errSection("Erro de sincronização", syncErr);
+  document.getElementById("errorModalBody").innerHTML =
+    html || '<div class="text-zinc-500">Sem erros registrados.</div>';
+
+  const bg = document.getElementById("errorModalBg");
+  bg.classList.remove("hidden");
+  bg.classList.add("flex");
+}
+
+function closeErrorModal() {
+  const bg = document.getElementById("errorModalBg");
+  bg.classList.add("hidden");
+  bg.classList.remove("flex");
+}
+
+function _errSection(title, msg) {
+  return `
+    <div class="rounded-xl border border-red-900/50 bg-red-950/20 p-4">
+      <div class="text-xs font-semibold text-red-400 uppercase tracking-wide mb-2">${escHtml(title)}</div>
+      <pre class="text-xs text-zinc-200 whitespace-pre-wrap break-words font-mono leading-relaxed">${escHtml(msg)}</pre>
+    </div>`;
+}
+
+document.getElementById("errorModalBg")?.addEventListener("click", (e) => {
+  if (e.target.id === "errorModalBg") closeErrorModal();
+});
+
+// ── Sync job ─────────────────────────────────────────────────────────────────
+let _syncJobId = null, _syncPollInterval = null;
+
+async function startSync() {
+  const btn = document.getElementById("syncBtn");
+  const stopBtn = document.getElementById("syncStopBtn");
+  const statusEl = document.getElementById("syncStatus");
+
+  btn.disabled = true;
+  statusEl.textContent = "Iniciando…";
+  statusEl.classList.remove("hidden");
+  stopBtn.classList.remove("hidden");
+
+  try {
+    const r = await fetch("{{ url_for('dashboard.sync_start') }}", { method: "POST" });
+    const d = await r.json();
+    if (!d.ok) {
+      statusEl.textContent = d.error || "Erro ao iniciar sync.";
+      btn.disabled = false;
+      stopBtn.classList.add("hidden");
+      return;
+    }
+    _syncJobId = d.job_id;
+    _syncPollInterval = setInterval(pollSync, 1500);
+  } catch (e) {
+    statusEl.textContent = "Erro de rede: " + e;
+    btn.disabled = false;
+    stopBtn.classList.add("hidden");
+  }
+}
+
+async function stopSync() {
+  if (!_syncJobId) return;
+  await fetch(`/sync/job/${_syncJobId}/stop`, { method: "POST" });
+  document.getElementById("syncStopBtn").disabled = true;
+  document.getElementById("syncStopBtn").textContent = "Parando…";
+}
+
+async function pollSync() {
+  if (!_syncJobId) return;
+  try {
+    const r = await fetch(`/sync/job/${_syncJobId}`);
+    const d = await r.json();
+    const statusEl = document.getElementById("syncStatus");
+    const done = d.done || 0, total = d.total || 0;
+    statusEl.textContent = `Sincronizando ${done}/${total} — OK ${d.synced || 0} · Travado ${d.blocked || 0} · Erros ${d.errors || 0}`;
+
+    if (d.status === "done" || d.status === "stopped" || d.status === "error") {
+      clearInterval(_syncPollInterval);
+      _syncPollInterval = null;
+      document.getElementById("syncStopBtn").classList.add("hidden");
+      const label = d.status === "done" ? "Concluído" : "Parado";
+      statusEl.textContent = `${label} • OK: ${d.synced || 0} • Developers travado: ${d.blocked || 0} • Erros: ${d.errors || 0}`;
+      setTimeout(() => location.reload(), 1500);
+    }
+  } catch {}
+}
+
+// ── util ─────────────────────────────────────────────────────────────────────
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// ── Select all (filter-aware) ─────────────────────────────────────────────────
+function syncSelectAll() {
+  const allRows = Array.from(document.querySelectorAll('.filter-row'));
+  const visibleCbs = allRows
+    .filter(r => r.style.display !== 'none')
+    .map(r => r.querySelector('input[name="waba_ids"]'))
+    .filter(Boolean);
+  const checkedCbs = visibleCbs.filter(cb => cb.checked);
+  const hdr = document.getElementById("selectAll");
+  if (hdr) hdr.checked = visibleCbs.length > 0 && visibleCbs.length === checkedCbs.length;
+}
+
+function toggleSelectAll(checked) {
+  document.querySelectorAll('.filter-row').forEach(row => {
+    if (row.style.display !== 'none') {
+      const cb = row.querySelector('input[name="waba_ids"]');
+      if (cb) cb.checked = checked;
+    }
+  });
+}
+</script>
+
+{% include "_tpl_modal.html" %}
+{% include "_disparo_modal.html" %}
+
+<script>
+// ── Filter engine ─────────────────────────────────────────────────────────────
+(function () {
+  const FILTER_KEY = 'dashboard_filters_v1';
+  let _openPanel = null;
+
+  document.addEventListener('click', function (e) {
+    if (!_openPanel) return;
+    if (!_openPanel.closest('.filter-dropdown').contains(e.target)) {
+      _openPanel.classList.add('hidden');
+      _openPanel = null;
+    }
+  }, true);
+
+  function _toggleDropdown(btn) {
+    const dd = btn.closest('.filter-dropdown');
+    const panel = dd.querySelector('.filter-panel');
+    const isOpen = !panel.classList.contains('hidden');
+    if (_openPanel && _openPanel !== panel) {
+      _openPanel.classList.add('hidden');
+    }
+    panel.classList.toggle('hidden', isOpen);
+    _openPanel = isOpen ? null : panel;
+  }
+  window._filterToggleDropdown = _toggleDropdown;
+
+  function _buildDynamic() {
+    const rows = document.querySelectorAll('.filter-row');
+
+    const STATUS_ORDER = ['OK','DESATIVADA','LIMITADA','PROBLEMA CARTÃO','ERRO GENERIC',
+                          'Developers Travado','Erro','DESABILITADA','PERMANENTE','RESTRITA','ANALISANDO','RETENÇÃO'];
+    const statuses = new Set();
+    rows.forEach(r => statuses.add(r.dataset.status || 'OK'));
+    const statusContainer = document.querySelector('#filter-panel-status .filter-options');
+    if (statusContainer) {
+      const sorted = Array.from(statuses).sort((a, b) => {
+        const ia = STATUS_ORDER.indexOf(a), ib = STATUS_ORDER.indexOf(b);
+        return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+      });
+      statusContainer.innerHTML = sorted.map(s =>
+        `<label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-800 cursor-pointer">
+          <input type="checkbox" class="filter-cb w-3.5 h-3.5 accent-indigo-500" data-filter="status" value="${escHtml(s)}">
+          <span class="text-xs text-zinc-300">${escHtml(s)}</span>
+        </label>`
+      ).join('');
+    }
+
+    const tiers = new Set();
+    rows.forEach(r => tiers.add(r.dataset.tier || 'NONE'));
+    const tierContainer = document.querySelector('#filter-panel-tier .filter-options');
+    if (tierContainer) {
+      const tierLabel = t =>
+        t === 'NONE' ? 'Sem limite' :
+        t === 'TIER_UNLIMITED' ? '∞ Ilimitado' :
+        t.replace('TIER_', '');
+      const sorted = Array.from(tiers).sort((a, b) => {
+        if (a === 'TIER_UNLIMITED') return -1; if (b === 'TIER_UNLIMITED') return 1;
+        if (a === 'NONE') return 1;  if (b === 'NONE') return -1;
+        return a.localeCompare(b);
+      });
+      tierContainer.innerHTML = sorted.map(t =>
+        `<label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-800 cursor-pointer">
+          <input type="checkbox" class="filter-cb w-3.5 h-3.5 accent-indigo-500" data-filter="tier" value="${escHtml(t)}">
+          <span class="text-xs text-zinc-300">${escHtml(tierLabel(t))}</span>
+        </label>`
+      ).join('');
+    }
+
+    document.querySelectorAll('.filter-cb').forEach(cb => {
+      cb.removeEventListener('change', applyFilters);
+      cb.addEventListener('change', applyFilters);
+    });
+
+    const counter = document.getElementById('filter-counter');
+    if (counter) counter.textContent = rows.length + ' WABAs';
+  }
+
+  function applyFilters() {
+    const active = {};
+    document.querySelectorAll('.filter-cb:checked').forEach(cb => {
+      const k = cb.dataset.filter;
+      if (!active[k]) active[k] = [];
+      active[k].push(cb.value);
+    });
+    const search = (document.getElementById('filter-search')?.value || '').trim().toLowerCase();
+
+    const rows = document.querySelectorAll('.filter-row');
+    let vis = 0;
+
+    rows.forEach(row => {
+      const d = row.dataset;
+      let ok = true;
+
+      if (active.status?.length)
+        ok = ok && active.status.includes(d.status || 'OK');
+
+      if (active.travada?.length)
+        ok = ok && active.travada.includes(d.travada);
+
+      if (active.disparou?.length)
+        ok = ok && active.disparou.includes(d.disparou);
+
+      if (active.health?.length)
+        ok = ok && active.health.includes(d.health);
+
+      if (active.tier?.length)
+        ok = ok && active.tier.includes(d.tier);
+
+      if (active.phone?.length)
+        ok = ok && active.phone.some(v =>
+          v === 'hasphone_1'  ? d.hasphone === '1' :
+          v === 'hasphone_0'  ? d.hasphone === '0' :
+          v === 'connected_1' ? d.phoneconnected === '1' :
+          v === 'connected_0' ? (d.hasphone === '1' && d.phoneconnected === '0') :
+          false
+        );
+
+      if (active.tpl?.length)
+        ok = ok && active.tpl.some(v =>
+          v === 'approved' ? d.tplApproved === '1' :
+          v === 'paused'   ? d.tplPaused   === '1' :
+          v === 'rejected' ? d.tplRejected  === '1' :
+          v === 'pending'  ? d.tplPending   === '1' :
+          v === 'none'     ? d.tplAny       === '0' :
+          false
+        );
+
+      if (search)
+        ok = ok && (d.search || '').includes(search);
+
+      row.style.display = ok ? '' : 'none';
+      if (ok) {
+        vis++;
+      } else {
+        const cb = row.querySelector('input[name="waba_ids"]');
+        if (cb) cb.checked = false;
+      }
+    });
+
+    const counter = document.getElementById('filter-counter');
+    if (counter) counter.textContent = vis + ' de ' + rows.length + ' WABAs';
+
+    const filterN = Object.values(active).reduce((n, a) => n + a.length, 0) + (search ? 1 : 0);
+    const badge = document.getElementById('filter-active-badge');
+    if (badge) {
+      badge.textContent = filterN > 0
+        ? filterN + ' filtro' + (filterN !== 1 ? 's' : '') + ' ativo' + (filterN !== 1 ? 's' : '')
+        : '';
+      badge.classList.toggle('hidden', filterN === 0);
+    }
+    document.getElementById('filter-clear-btn')?.classList.toggle('hidden', filterN === 0);
+
+    document.querySelectorAll('.filter-dropdown').forEach(dd => {
+      const btn = dd.querySelector('.filter-btn');
+      const hasActive = dd.querySelectorAll('.filter-cb:checked').length > 0;
+      if (!btn) return;
+      btn.classList.toggle('bg-indigo-900/40', hasActive);
+      btn.classList.toggle('border-indigo-600', hasActive);
+      btn.classList.toggle('text-indigo-200',   hasActive);
+      btn.classList.toggle('bg-zinc-800',        !hasActive);
+      btn.classList.toggle('border-zinc-700',    !hasActive);
+      btn.classList.toggle('text-zinc-300',      !hasActive);
+    });
+
+    syncSelectAll();
+    _saveFilters(active, search);
+  }
+  window._filterApply = applyFilters;
+
+  window._filterClear = function () {
+    document.querySelectorAll('.filter-cb').forEach(cb => cb.checked = false);
+    const s = document.getElementById('filter-search');
+    if (s) s.value = '';
+    applyFilters();
+  };
+
+  function _saveFilters(active, search) {
+    try { localStorage.setItem(FILTER_KEY, JSON.stringify({ active, search: search || '' })); } catch (e) {}
+  }
+
+  function _restoreFilters() {
+    let saved;
+    try { saved = JSON.parse(localStorage.getItem(FILTER_KEY) || 'null'); } catch (e) {}
+    if (!saved) return;
+    document.querySelectorAll('.filter-cb').forEach(cb => {
+      const vals = (saved.active || {})[cb.dataset.filter] || [];
+      cb.checked = vals.includes(cb.value);
+    });
+    const s = document.getElementById('filter-search');
+    if (s && saved.search) s.value = saved.search;
+    applyFilters();
+  }
+
+  _buildDynamic();
+  document.getElementById('filter-search')?.addEventListener('input', applyFilters);
+  document.getElementById('filter-clear-btn')?.addEventListener('click', window._filterClear);
+  _restoreFilters();
+})();
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  DASHBOARD SUMMARY ANALYTICS
+// ══════════════════════════════════════════════════════════════════════════════
+
+function _dashDateToUnix(dateStr) {
+  return Math.floor(new Date(dateStr + "T00:00:00Z").getTime() / 1000);
+}
+
+function _dashISODate(d) {
+  return d.toISOString().slice(0, 10);
+}
+
+function dashSetPreset(kind) {
+  const today = new Date();
+  const todayStr = _dashISODate(today);
+  let startStr = todayStr;
+
+  if (kind === 'hoje') {
+    startStr = todayStr;
+  } else if (kind === 'ontem') {
+    const y = new Date(today); y.setUTCDate(today.getUTCDate() - 1);
+    startStr = _dashISODate(y);
+    document.getElementById('dash-end').value = startStr;
+    document.getElementById('dash-start').value = startStr;
+    fetchDashboardAnalytics();
+    return;
+  } else if (kind === 'semana') {
+    const mon = new Date(today);
+    const day = mon.getUTCDay() || 7;
+    mon.setUTCDate(mon.getUTCDate() - day + 1);
+    startStr = _dashISODate(mon);
+  } else if (kind === 'mes') {
+    startStr = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, '0')}-01`;
+  } else if (kind === '7d') {
+    const s = new Date(today); s.setUTCDate(today.getUTCDate() - 6);
+    startStr = _dashISODate(s);
+  } else if (kind === '30d') {
+    const s = new Date(today); s.setUTCDate(today.getUTCDate() - 29);
+    startStr = _dashISODate(s);
+  }
+
+  document.getElementById('dash-start').value = startStr;
+  document.getElementById('dash-end').value   = todayStr;
+  fetchDashboardAnalytics();
+}
+
+async function fetchDashboardAnalytics() {
+  const startVal = document.getElementById('dash-start').value;
+  const endVal   = document.getElementById('dash-end').value;
+  if (!startVal || !endVal) return;
+
+  const startTs = _dashDateToUnix(startVal);
+  const endTs   = _dashDateToUnix(endVal) + 86399;
+
+  ['dash-stat-disparadas', 'dash-stat-sent', 'dash-stat-delivered'].forEach(id => {
+    document.getElementById(id).textContent = '…';
+  });
+  document.getElementById('dash-analytics-error').classList.add('hidden');
+
+  try {
+    const r = await fetch(`/dashboard/analytics?start=${startTs}&end=${endTs}`);
+    const j = await r.json();
+
+    if (!r.ok || j.error) {
+      ['dash-stat-disparadas', 'dash-stat-sent', 'dash-stat-delivered'].forEach(id => {
+        document.getElementById(id).textContent = '—';
+      });
+      const errEl = document.getElementById('dash-analytics-error');
+      errEl.textContent = j.error || `Erro HTTP ${r.status}`;
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    const fmt = n => (n || 0).toLocaleString('pt-BR');
+    document.getElementById('dash-stat-disparadas').textContent = fmt(j.wabas_disparadas);
+    document.getElementById('dash-stat-sent').textContent       = fmt(j.total_sent);
+    document.getElementById('dash-stat-delivered').textContent  = fmt(j.total_delivered);
+
+    if (j.errors && j.errors.length) {
+      const errEl = document.getElementById('dash-analytics-error');
+      errEl.textContent = `${j.errors.length} WABA(s) com erro ao buscar analytics: ${j.errors.slice(0, 3).join('; ')}${j.errors.length > 3 ? '…' : ''}`;
+      errEl.classList.remove('hidden');
+    }
+  } catch (e) {
+    ['dash-stat-disparadas', 'dash-stat-sent', 'dash-stat-delivered'].forEach(id => {
+      document.getElementById(id).textContent = '—';
+    });
+    const errEl = document.getElementById('dash-analytics-error');
+    errEl.textContent = 'Erro de rede: ' + String(e);
+    errEl.classList.remove('hidden');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => dashSetPreset('hoje'));
+</script>
+
+{% endblock %}

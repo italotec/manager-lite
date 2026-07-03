@@ -1,0 +1,27 @@
+/* WhatsApp-style preview bubble */
+.wa-phone {
+  background: #0b141a;
+  background-image:
+    radial-gradient(circle at 20% 10%, rgba(255,255,255,0.02) 0, transparent 40%),
+    radial-gradient(circle at 80% 80%, rgba(255,255,255,0.02) 0, transparent 40%);
+}
+.wa-bubble {
+  background: #005c4b;
+  color: #e9edef;
+  border-radius: 8px;
+  position: relative;
+}
+.wa-bubble::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: -8px;
+  width: 0;
+  height: 0;
+  border-top: 8px solid #005c4b;
+  border-right: 8px solid transparent;
+}
+.wa-btn {
+  color: #53bdeb;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
