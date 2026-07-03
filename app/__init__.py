@@ -24,6 +24,7 @@ def create_app():
     from .routes.docs import bp as docs_bp
     from .routes.admin import bp as admin_bp
     from .routes.sync import bp as sync_bp
+    from .routes.account import bp as account_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(wabas_bp)
@@ -34,6 +35,7 @@ def create_app():
     app.register_blueprint(docs_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(sync_bp)
+    app.register_blueprint(account_bp)
 
     # Block banned users everywhere (force logout)
     @app.before_request
@@ -60,6 +62,11 @@ def create_app():
             "CREATE UNIQUE INDEX IF NOT EXISTS ix_user_source_id ON user (source_id)"
         ))
         db.session.commit()
+
+        if "sync_enabled" not in cols:
+            db.session.execute(db.text(
+                "ALTER TABLE user ADD COLUMN sync_enabled BOOLEAN NOT NULL DEFAULT 1"))
+            db.session.commit()
 
         # Recover DisparoJobs left "running"/"queued" by a previous restart. The
         # Disparou stamp is only written by _finish() at job end, so a job whose

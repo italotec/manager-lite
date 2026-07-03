@@ -29,6 +29,10 @@ class User(db.Model, UserMixin):
     # NULL for Lite-native users.
     source_id = db.Column(db.Integer, unique=True, nullable=True, index=True)
 
+    # When False, this user's WABAs are frozen: Manager sync neither writes
+    # nor reads them (both /sync/users and /sync/pending-wabas skip them).
+    sync_enabled = db.Column(db.Boolean, default=True, nullable=False)
+
     def generate_api_key(self):
         self.api_key = secrets.token_urlsafe(32)
 

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="max-w-xl mx-auto space-y-6">
+
+  <div>
+    <h1 class="text-2xl font-bold text-zinc-100">Minha Conta</h1>
+    <p class="text-sm text-zinc-500 mt-1">Configurações da sua conta no Manager Lite.</p>
+  </div>
+
+  {# ── Sync toggle card ── #}
+  <div class="rounded-2xl border border-zinc-800 bg-zinc-900/30 p-6 space-y-4">
+
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-indigo-900/60 flex items-center justify-center">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-indigo-400" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+        </svg>
+      </div>
+      <div>
+        <div class="font-semibold text-zinc-100">Sincronização com o Manager</div>
+        <div class="text-xs text-zinc-500">Controla se suas WABAs sincronizam com o Gerenciador de BMs.</div>
+      </div>
+    </div>
+
+    <form method="POST" action="{{ url_for('account.save_sync') }}" class="space-y-3">
+      <label class="flex items-center justify-between gap-3 rounded-xl bg-zinc-950 border border-zinc-800 px-4 py-3 cursor-pointer">
+        <span class="text-sm text-zinc-300">
+          Sincronizar WABAs com o Manager
+        </span>
+        <input type="checkbox"
+               name="sync_enabled"
+               {% if current_user.sync_enabled %}checked{% endif %}
+               onchange="this.form.submit()"
+               class="w-5 h-5 rounded accent-indigo-600 cursor-pointer" />
+      </label>
+      <p class="text-xs text-zinc-500">
+        <b class="text-zinc-300">Ligado:</b> WABAs adicionadas aqui ou no Manager são mescladas
+        automaticamente nos dois sistemas.<br/>
+        <b class="text-zinc-300">Desligado:</b> nenhuma WABA sincroniza em nenhum sentido — o que
+        já está aqui permanece, mas nada é adicionado ou removido pelo Manager.
+      </p>
+    </form>
+
+  </div>
+
+  {# ── Account info ── #}
+  <div class="rounded-2xl border border-zinc-800 bg-zinc-900/30 p-6 space-y-3">
+    <div class="font-semibold text-zinc-100">Informações da Conta</div>
+    <div class="flex items-center justify-between py-2 border-b border-zinc-800 text-sm">
+      <span class="text-zinc-500">Usuário</span>
+      <span class="font-mono text-zinc-200">{{ current_user.username }}</span>
+    </div>
+    <div class="flex items-center justify-between py-2 text-sm">
+      <span class="text-zinc-500">Perfil</span>
+      <span class="px-2 py-0.5 rounded text-xs font-bold
+        {% if current_user.is_admin %}bg-indigo-900/60 text-indigo-300{% else %}bg-zinc-700/60 text-zinc-400{% endif %}">
+        {% if current_user.is_admin %}Administrador{% else %}Usuário{% endif %}
+      </span>
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}

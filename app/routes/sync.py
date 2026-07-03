@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify, current_app
 from .. import db
 from ..models import User
-from ..json_store import ensure_user_bms_file, upsert_waba_full, replace_user_wabas
+from ..json_store import ensure_user_bms_file, upsert_waba_full, replace_user_wabas, get_lite_origin_wabas
 
 bp = Blueprint("sync", __name__, url_prefix="/api/v1/sync")
 
@@ -47,6 +47,13 @@ def _apply_user(u: dict) -> dict:
     db.session.commit()
 
     ensure_user_bms_file(user.id)
+
+    if not user.sync_enabled:
+        # Sync disabled by the user in "Minha Conta": leave this user's
+        # bms.json untouched — no adds, no prunes, in either direction.
+        return {"ok": True, "source_id": source_id, "lite_id": user.id,
+                "wabas": 0, "sync_enabled": False}
+
     keep = set()
     for w in u.get("wabas", []) or []:
         waba_id = str(w.get("waba_id") or "").strip()
@@ -56,7 +63,8 @@ def _apply_user(u: dict) -> dict:
         keep.add(waba_id)
     replace_user_wabas(user.id, keep)
 
-    return {"ok": True, "source_id": source_id, "lite_id": user.id, "wabas": len(keep)}
+    return {"ok": True, "source_id": source_id, "lite_id": user.id,
+            "wabas": len(keep), "sync_enabled": True}
 
 
 @bp.route("/users", methods=["POST"])
@@ -83,3 +91,31 @@ def sync_users():
             results.append({"ok": False, "error": str(exc), "source_id": u.get("source_id")})
 
     return jsonify({"ok": True, "results": results}), 200
+
+
+@bp.route("/pending-wabas", methods=["GET"])
+def pending_wabas():
+    """WABAs added directly in Lite, not yet adopted by Manager.
+
+    Manager polls this to discover and adopt them, then echoes them back in
+    the next /sync/users payload (which flips their origin to "manager").
+    Users with sync disabled are excluded entirely.
+    """
+    auth_err = _authenticate_sync()
+    if auth_err:
+        return auth_err
+
+    out = []
+    for user in User.query.all():
+        if not user.sync_enabled:
+            continue
+        wabas = get_lite_origin_wabas(user.id)
+        if wabas:
+            out.append({
+                "source_id": user.source_id,
+                "username": user.username,
+                "lite_id": user.id,
+                "wabas": wabas,
+            })
+
+    return jsonify({"ok": True, "users": out}), 200

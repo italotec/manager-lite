@@ -88,6 +88,7 @@ def upsert_waba(user_id: int, waba_id: str, token: str, adspower_profile_id: str
         entry["serial_number"] = serial_number or entry.get("serial_number", "")
         entry.setdefault("phone_number_id", "")
         entry.setdefault("templates", [])
+        entry.setdefault("origin", "lite")
 
         snap = entry.get("snapshot", {}) if isinstance(entry.get("snapshot"), dict) else {}
         snap.setdefault("waba_name", "")
@@ -116,19 +117,42 @@ def upsert_waba_full(user_id: int, entry: Dict[str, Any]) -> None:
         if isinstance(entry.get("snapshot"), dict):
             cur["snapshot"] = entry["snapshot"]
         cur.setdefault("templates", [])
+        cur["origin"] = "manager"
         data[key] = cur
         save_user_bms(user_id, data)
 
 
 def replace_user_wabas(user_id: int, waba_ids_to_keep: set) -> None:
-    """Prune WABAs no longer present in Manager (keeps Lite a faithful replica)."""
+    """Prune WABAs no longer present in Manager (keeps Lite a faithful replica).
+
+    WABAs added directly in Lite (origin == "lite") are never pruned here —
+    they haven't been adopted by Manager yet, so Manager's payload can't know
+    about them. They only become prunable once Manager echoes them back
+    (upsert_waba_full flips their origin to "manager").
+    """
     with _WRITE_LOCK:
         data = load_user_bms(user_id)
-        removed = [k for k in data if k not in waba_ids_to_keep]
+        removed = [
+            k for k, v in data.items()
+            if k not in waba_ids_to_keep
+            and (not isinstance(v, dict) or v.get("origin") != "lite")
+        ]
         for k in removed:
             del data[k]
         if removed:
             save_user_bms(user_id, data)
+
+
+def get_lite_origin_wabas(user_id: int) -> list:
+    """Return whitelisted fields for WABAs added in Lite and not yet adopted by Manager."""
+    data = load_user_bms(user_id)
+    fields = ("waba_id", "token", "phone_number_id", "adspower_profile_id",
+              "business_manager_id", "payment_account_id", "serial_number", "remarks")
+    out = []
+    for v in data.values():
+        if isinstance(v, dict) and v.get("origin") == "lite":
+            out.append({f: v[f] for f in fields if f in v})
+    return out
 
 
 def update_snapshot(user_id: int, waba_id: str, **fields) -> None:
