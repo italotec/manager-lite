@@ -50,6 +50,7 @@ def dashboard():
         rows.append({
             "waba_id": waba_id,
             "waba_name": snap.get("waba_name") or "—",
+            "serial_number": data.get("serial_number") or "",
             "phone_numbers": snap.get("phone_numbers") or [],
             "t": t_counts or {
                 "APPROVED": 0,

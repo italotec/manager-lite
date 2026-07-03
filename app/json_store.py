@@ -71,7 +71,8 @@ def save_user_bms(user_id: int, data: Dict[str, Any]) -> None:
         lock_file.close()
 
 def upsert_waba(user_id: int, waba_id: str, token: str, adspower_profile_id: str = "",
-                business_manager_id: str = "", payment_account_id: str = "") -> None:
+                business_manager_id: str = "", payment_account_id: str = "",
+                serial_number: str = "") -> None:
     with _WRITE_LOCK:
         data = load_user_bms(user_id)
         key = str(waba_id).strip()
@@ -84,6 +85,7 @@ def upsert_waba(user_id: int, waba_id: str, token: str, adspower_profile_id: str
         entry["adspower_profile_id"] = adspower_profile_id or entry.get("adspower_profile_id", "")
         entry["business_manager_id"] = business_manager_id or entry.get("business_manager_id", "")
         entry["payment_account_id"] = payment_account_id or entry.get("payment_account_id", "")
+        entry["serial_number"] = serial_number or entry.get("serial_number", "")
         entry.setdefault("phone_number_id", "")
         entry.setdefault("templates", [])
 
@@ -107,7 +109,8 @@ def upsert_waba_full(user_id: int, entry: Dict[str, Any]) -> None:
         data = load_user_bms(user_id)
         cur = data.get(key, {}) if isinstance(data.get(key), dict) else {}
         for f in ("waba_id", "token", "phone_number_id", "adspower_profile_id",
-                  "business_manager_id", "payment_account_id", "remarks"):
+                  "business_manager_id", "payment_account_id", "remarks",
+                  "serial_number"):
             if f in entry:
                 cur[f] = entry[f]
         if isinstance(entry.get("snapshot"), dict):
