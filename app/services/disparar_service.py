@@ -371,9 +371,12 @@ def _run_disparo(app, job_id: int, user_id: int,
         "last_message": "", "stop_requested": False,
     }
     _live_jobs[job_id] = state
+    log_fh = None
 
     def _finish(status: str, msg: str):
         state["status"] = status
+        if state.get("erro_generic_marked") and "ERRO GENERIC" not in msg:
+            msg = f"🔒 ERRO GENERIC · {msg}"
         state["last_message"] = msg
         # Stamp the Disparou check FIRST — it's the user-facing result and must never
         # be skipped because of a transient DB lock on the job-history write below.
@@ -400,6 +403,12 @@ def _run_disparo(app, job_id: int, user_id: int,
                 db.session.rollback()
             except Exception:
                 pass
+        try:
+            if log_fh is not None:
+                log_fh.flush()
+                log_fh.close()
+        except Exception:
+            pass
         _live_jobs.pop(job_id, None)
 
     namespace = _random_namespace()
@@ -448,10 +457,20 @@ def _run_disparo(app, job_id: int, user_id: int,
         _finish("done", f"Concluído — Enviados: 0  |  Falhas: 0  |  Pulados: {state['skipped']}")
         return
 
+    # Open once and keep the handle for the job's lifetime — reopening the file
+    # (and taking the global LOCK, which only needs to guard the shared
+    # sent_log.txt) on every single message was serializing all batch children
+    # through one mutex and starving the status-poll thread of GIL time.
+    log_fh = open(log_path, "a", encoding="utf-8")
+    _pending_flush = 0
+
     def _append_log(entry: dict):
-        with LOCK:
-            with open(log_path, "a", encoding="utf-8") as lf:
-                lf.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        nonlocal _pending_flush
+        log_fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        _pending_flush += 1
+        if _pending_flush >= 25:
+            log_fh.flush()
+            _pending_flush = 0
 
     def _worker(row: dict):
         """Pure HTTP worker — returns (phone, success, msg)."""

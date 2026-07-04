@@ -25,6 +25,7 @@ def create_app():
     from .routes.admin import bp as admin_bp
     from .routes.sync import bp as sync_bp
     from .routes.account import bp as account_bp
+    from .routes.photos_bp import bp as photos_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(wabas_bp)
@@ -36,6 +37,7 @@ def create_app():
     app.register_blueprint(admin_bp)
     app.register_blueprint(sync_bp)
     app.register_blueprint(account_bp)
+    app.register_blueprint(photos_bp)
 
     # Block banned users everywhere (force logout)
     @app.before_request

@@ -30,7 +30,7 @@ from .disparar_service import (
     stamp_disparo_events,
 )
 
-GLOBAL_BATCH_BUDGET = 200   # max total thread-workers across all children (thread mode)
+GLOBAL_BATCH_BUDGET = 600   # max total thread-workers across all children (thread mode)
 GLOBAL_ASYNC_BUDGET = 500   # max total async coroutines across all children (MAX mode)
 
 
@@ -185,12 +185,15 @@ def start_batch(app, user_id: int,
             "waba_id": waba_id,
             "name": bm.get("name", waba_id),
             "quota": bm["quota"],
+            "workers": child_workers,
         })
 
     batch_data = {
         "user_id": user_id,
         "children": children,
         "pool_size": alloc["pool_size"],
+        "requested_workers": max_workers,
+        "effective_workers": child_workers,
     }
 
     with _BATCH_LOCK:
@@ -266,12 +269,15 @@ def start_travar_broadcast(app, user_id: int,
             "name": waba.get("name", waba_id),
             "quota": len(rows),
             "template": waba["template_name"],
+            "workers": child_workers,
         })
 
     batch_data = {
         "user_id": user_id,
         "children": children,
         "pool_size": len(rows),
+        "requested_workers": max_workers,
+        "effective_workers": child_workers,
     }
 
     with _BATCH_LOCK:
@@ -357,18 +363,23 @@ def batch_status(user_id: int, batch_id: str) -> dict | None:
         for k in ("total", "sent", "failed", "skipped"):
             totals[k] += st.get(k, 0)
 
+        last_message = st.get("last_message", "") or ""
+        erro_generic = bool(st.get("erro_generic_marked")) or "#135000" in last_message or "ERRO GENERIC" in last_message
+
         children_out.append({
             "job_id": job_id,
             "waba_id": child["waba_id"],
             "name": child["name"],
             "quota": child["quota"],
             "template": child.get("template", ""),
+            "workers": child.get("workers", 0),
             "status": st.get("status", "unknown"),
             "sent": st.get("sent", 0),
             "failed": st.get("failed", 0),
             "skipped": st.get("skipped", 0),
             "total": st.get("total", 0),
-            "last_message": st.get("last_message", ""),
+            "last_message": last_message,
+            "erro_generic": erro_generic,
         })
 
     processed = totals["sent"] + totals["failed"]
@@ -384,11 +395,16 @@ def batch_status(user_id: int, batch_id: str) -> dict | None:
     else:
         overall_status = "running"
 
+    locked = sum(1 for c in children_out if c["erro_generic"])
+
     return {
         "batch_id": batch_id,
         "status": overall_status,
         "pool_size": data.get("pool_size", 0),
         "pct": pct,
+        "requested_workers": data.get("requested_workers"),
+        "effective_workers": data.get("effective_workers"),
+        "locked": locked,
         **totals,
         "children": children_out,
     }

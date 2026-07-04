@@ -94,3 +94,20 @@ class TemplateModel(db.Model):
             "language":   self.language,
             "created_at": self.created_at.strftime("%d/%m/%Y") if self.created_at else "",
         }
+
+
+class PhotoModel(db.Model):
+    """Saved profile picture — reusable across WABAs."""
+    id         = db.Column(db.Integer, primary_key=True)
+    user_id    = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    name       = db.Column(db.String(128), nullable=False)
+    filename   = db.Column(db.String(256), nullable=False)
+    created_at = db.Column(db.DateTime, default=_now_sp, nullable=False)
+
+    def to_dict(self):
+        return {
+            "id":         self.id,
+            "name":       self.name,
+            "url":        f"/photos/{self.id}/file",
+            "created_at": self.created_at.strftime("%d/%m/%Y %H:%M") if self.created_at else "",
+        }

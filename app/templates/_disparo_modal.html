@@ -608,8 +608,12 @@ function pollDisparoJob(jobId, container, label) {
   function tick() {
     fetch(`/disparar/job/${jobId}/status`).then(r => r.json()).then(d => {
       if (d.error) return;
-      box.querySelector('.job-line').textContent =
-        `${d.status} — enviados: ${d.sent} • falhas: ${d.failed} • pulados: ${d.skipped} • ${d.pct}%`;
+      const badge = d.erro_generic
+        ? '<span class="inline-block px-2 py-0.5 rounded-full bg-red-900/60 text-red-300 border border-red-800/40 text-[11px] font-semibold mr-1">🔒 ERRO GENERIC (travada)</span>'
+        : '';
+      box.querySelector('.job-line').innerHTML =
+        `${badge}${disparoEscapeHtml(d.status)} — enviados: ${d.sent} • falhas: ${d.failed} • pulados: ${d.skipped} • ${d.pct}%` +
+        (d.last_message ? `<div class="text-zinc-500 truncate mt-0.5">${disparoEscapeHtml(d.last_message)}</div>` : '');
       if (d.status === 'running' || d.status === 'queued') {
         setTimeout(tick, 1500);
       } else {
@@ -641,9 +645,24 @@ function pollDisparoBatch(batchId, container) {
   function tick() {
     fetch(`/disparar/batch/${batchId}/status`).then(r => r.json()).then(d => {
       if (d.error) return;
-      box.querySelector('.batch-lines').innerHTML = d.children.map(c =>
-        `<div>${disparoEscapeHtml(c.name)}: ${c.status} — enviados ${c.sent}/${c.quota} • falhas ${c.failed}</div>`
-      ).join('') + `<div class="mt-1 font-medium text-zinc-300">Total: ${d.sent}/${d.total} enviados (${d.pct}%)</div>`;
+      box.querySelector('.batch-lines').innerHTML = d.children.map(c => {
+        const badge = c.erro_generic
+          ? '<span class="inline-block px-2 py-0.5 rounded-full bg-red-900/60 text-red-300 border border-red-800/40 text-[11px] font-semibold mr-1">🔒 ERRO GENERIC (travada)</span>'
+          : '';
+        const lastLine = c.last_message
+          ? `<div class="text-zinc-500 truncate">${disparoEscapeHtml(c.last_message)}</div>`
+          : '';
+        return `<div class="mb-1">
+          <div>${badge}${disparoEscapeHtml(c.name)}: ${disparoEscapeHtml(c.status)} — enviados ${c.sent}/${c.quota} • falhas ${c.failed}</div>
+          ${lastLine}
+        </div>`;
+      }).join('') +
+        `<div class="mt-1 font-medium text-zinc-300">Total: ${d.sent}/${d.total} enviados (${d.pct}%)` +
+        (d.locked ? ` · ${d.locked} travada(s)` : '') +
+        `</div>` +
+        (d.effective_workers !== undefined && d.requested_workers !== undefined && d.effective_workers !== d.requested_workers
+          ? `<div class="text-zinc-500">Velocidade efetiva: ${d.effective_workers === 0 ? 'MAX' : d.effective_workers} por conta (solicitada: ${d.requested_workers === 0 ? 'MAX' : d.requested_workers})</div>`
+          : '');
       if (d.status === 'running') {
         setTimeout(tick, 1500);
       } else {

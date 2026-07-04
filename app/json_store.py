@@ -21,6 +21,11 @@ def user_dir(user_id: int) -> str:
     os.makedirs(base, exist_ok=True)
     return base
 
+def photos_dir(user_id: int) -> str:
+    path = os.path.join(user_dir(user_id), "photos")
+    os.makedirs(path, exist_ok=True)
+    return path
+
 def bms_path(user_id: int) -> str:
     return os.path.join(user_dir(user_id), "bms.json")
 

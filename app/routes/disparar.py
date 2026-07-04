@@ -362,21 +362,24 @@ def job_status(job_id):
     if live:
         total, sent, failed, skipped = live["total"], live["sent"], live["failed"], live["skipped"]
         status, last_message = live["status"], live["last_message"]
+        erro_generic_marked = bool(live.get("erro_generic_marked"))
     else:
         job = db.session.get(DisparoJob, job_id)
         if not job or job.user_id != current_user.id:
             return jsonify({"error": "not found"}), 404
         total, sent, failed, skipped = job.total, job.sent, job.failed, job.skipped
         status, last_message = job.status, job.last_message
+        erro_generic_marked = False
 
     processed = sent + failed
     remaining = max(0, (total - skipped) - processed)
     pct = round(processed / max(1, total - skipped) * 100)
+    erro_generic = erro_generic_marked or "#135000" in (last_message or "") or "ERRO GENERIC" in (last_message or "")
 
     return jsonify({
         "status": status, "total": total, "sent": sent, "failed": failed,
         "skipped": skipped, "remaining": remaining, "pct": pct,
-        "last_message": last_message,
+        "last_message": last_message, "erro_generic": erro_generic,
     })
 
 

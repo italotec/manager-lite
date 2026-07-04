@@ -29,6 +29,8 @@ class Config:
 
     # META
     META_API_VERSION = os.getenv("META_API_VERSION", "v18.0")
+    META_UPLOAD_API_VERSION = os.getenv("META_UPLOAD_API_VERSION", "v21.0")
+    META_APP_ID = os.getenv("META_APP_ID", "")
     META_REGISTER_PIN = os.getenv("META_REGISTER_PIN", "123456")
 
     # Seed admin login (created on first boot if no users exist)
