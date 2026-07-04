@@ -1,11 +1,13 @@
 from flask import Flask, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, current_user, logout_user
+from flask_sock import Sock
 from .config import Config
 
 db = SQLAlchemy()
 login_manager = LoginManager()
 login_manager.login_view = "auth.login_get"
+sock = Sock()
 
 def create_app():
     app = Flask(__name__)
@@ -13,6 +15,7 @@ def create_app():
 
     db.init_app(app)
     login_manager.init_app(app)
+    sock.init_app(app)
 
     # Blueprints
     from .routes.auth import bp as auth_bp
@@ -26,6 +29,8 @@ def create_app():
     from .routes.sync import bp as sync_bp
     from .routes.account import bp as account_bp
     from .routes.photos_bp import bp as photos_bp
+    from .routes.cartoes import bp as cartoes_bp
+    from .routes.agent_ws import bp as agent_ws_bp, handle_ws as agent_handle_ws
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(wabas_bp)
@@ -38,6 +43,10 @@ def create_app():
     app.register_blueprint(sync_bp)
     app.register_blueprint(account_bp)
     app.register_blueprint(photos_bp)
+    app.register_blueprint(cartoes_bp)
+    app.register_blueprint(agent_ws_bp)
+
+    sock.route("/agent/ws")(agent_handle_ws)
 
     # Block banned users everywhere (force logout)
     @app.before_request

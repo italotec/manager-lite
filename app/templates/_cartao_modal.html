@@ -1,0 +1,165 @@
+<!-- ── Add Card bulk modal ──────────────────────────────────────────────────── -->
+<div id="cardModal" class="hidden fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+  <div class="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 w-full max-w-lg space-y-4">
+    <div class="flex items-center justify-between">
+      <h3 class="text-base font-semibold text-zinc-100">Adicionar Cartão — Bulk</h3>
+      <button onclick="closeCardModal()" class="text-zinc-500 hover:text-zinc-300 text-xl leading-none">&times;</button>
+    </div>
+
+    <p id="cardModalStatus" class="text-sm text-zinc-400"></p>
+    <p id="cardAgentStatus" class="text-xs"></p>
+
+    <div id="cardModalErr" class="hidden text-sm text-red-400 rounded-lg bg-red-950/40 px-3 py-2"></div>
+
+    <!-- Results box (shown while/after job runs) -->
+    <div id="cardResultBox" class="hidden max-h-48 overflow-y-auto space-y-0.5 rounded-xl border border-zinc-800 bg-zinc-950/60 p-2"></div>
+
+    <div class="flex items-center gap-3">
+      <button id="cardStartBtn" onclick="startCardJob()"
+              class="px-4 py-2 rounded-xl bg-indigo-700 hover:bg-indigo-600 text-sm font-semibold disabled:opacity-50">
+        Adicionar Cartão
+      </button>
+      <button id="cardStopBtn" onclick="stopCardJob()"
+              class="hidden px-4 py-2 rounded-xl bg-red-900/60 hover:bg-red-800/60 text-sm font-semibold text-red-300">
+        Parar
+      </button>
+      <button id="cardDoneBtn" onclick="closeCardModal()"
+              class="hidden px-4 py-2 rounded-xl bg-zinc-700 hover:bg-zinc-600 text-sm font-semibold">
+        Fechar
+      </button>
+      <a href="{{ url_for('cartoes.cartoes_page') }}"
+         class="ml-auto text-xs text-zinc-500 hover:text-zinc-300 underline">Gerenciar cartões</a>
+    </div>
+  </div>
+</div>
+
+<script>
+let _cardWabaIds = [];
+let _cardJobId = null;
+let _cardPollInterval = null;
+
+async function openCardModal() {
+  const checks = Array.from(document.querySelectorAll('input[name="waba_ids"]:checked'));
+  if (!checks.length) { alert("Selecione ao menos 1 WABA."); return; }
+  _cardWabaIds = checks.map(c => c.value);
+
+  const modal = document.getElementById("cardModal");
+  modal.classList.remove("hidden");
+  document.getElementById("cardModalStatus").textContent = _cardWabaIds.length + " WABA(s) selecionada(s).";
+  document.getElementById("cardModalErr").classList.add("hidden");
+  document.getElementById("cardResultBox").classList.add("hidden");
+  document.getElementById("cardResultBox").innerHTML = "";
+  document.getElementById("cardStopBtn").classList.add("hidden");
+  document.getElementById("cardDoneBtn").classList.add("hidden");
+  document.getElementById("cardStartBtn").classList.remove("hidden");
+  document.getElementById("cardStartBtn").disabled = false;
+  document.getElementById("cardStartBtn").textContent = "Adicionar Cartão";
+  _cardJobId = null;
+  if (_cardPollInterval) clearInterval(_cardPollInterval);
+
+  await checkCardAgentStatus();
+}
+
+function closeCardModal() {
+  document.getElementById("cardModal").classList.add("hidden");
+  if (_cardPollInterval) clearInterval(_cardPollInterval);
+  _cardPollInterval = null;
+  _cardJobId = null;
+}
+
+async function checkCardAgentStatus() {
+  const el = document.getElementById("cardAgentStatus");
+  try {
+    const r = await fetch("/agent/status");
+    const d = await r.json();
+    if (d.online) {
+      el.textContent = "● Agente conectado";
+      el.className = "text-xs text-emerald-400";
+    } else {
+      el.textContent = "● Agente não conectado — abra o cliente local antes de continuar";
+      el.className = "text-xs text-red-400";
+    }
+  } catch (e) {
+    el.textContent = "";
+  }
+}
+
+async function startCardJob() {
+  const btn = document.getElementById("cardStartBtn");
+  btn.disabled = true; btn.textContent = "Iniciando…";
+  document.getElementById("cardModalErr").classList.add("hidden");
+  document.getElementById("cardResultBox").innerHTML = "";
+  document.getElementById("cardResultBox").classList.add("hidden");
+
+  try {
+    const r = await fetch("/cartoes/bulk-add-start", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({waba_ids: _cardWabaIds}),
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      const errEl = document.getElementById("cardModalErr");
+      errEl.textContent = d.error || "Erro desconhecido";
+      errEl.classList.remove("hidden");
+      btn.disabled = false; btn.textContent = "Adicionar Cartão";
+      return;
+    }
+    _cardJobId = d.job_id;
+    btn.classList.add("hidden");
+    document.getElementById("cardStopBtn").classList.remove("hidden");
+    document.getElementById("cardResultBox").classList.remove("hidden");
+    document.getElementById("cardModalStatus").textContent = "Processando…";
+    _cardPollInterval = setInterval(pollCardJob, 2000);
+  } catch(e) {
+    const errEl = document.getElementById("cardModalErr");
+    errEl.textContent = "Erro de rede: " + e;
+    errEl.classList.remove("hidden");
+    btn.disabled = false; btn.textContent = "Adicionar Cartão";
+  }
+}
+
+async function pollCardJob() {
+  if (!_cardJobId) return;
+  try {
+    const r = await fetch(`/cartoes/job/${_cardJobId}`);
+    const d = await r.json();
+
+    const statusEl = document.getElementById("cardModalStatus");
+    const box = document.getElementById("cardResultBox");
+
+    const done = d.done || 0;
+    const total = d.total || 0;
+    const pct = total ? Math.round(done / total * 100) : 0;
+    statusEl.textContent = `${done}/${total} (${pct}%) — ✅ ${d.success || 0}  ❌ ${d.failed || 0}`;
+
+    let html = "";
+    for (const row of (d.results || [])) {
+      const icon = row.ok ? "✅" : "❌";
+      html += `<div class="flex items-start gap-2 py-1 border-b border-zinc-800/60 last:border-0 text-xs">
+        <span class="w-5 shrink-0">${icon}</span>
+        <div class="flex-1 min-w-0">
+          <span class="text-zinc-200">${escHtml(row.waba_name || row.waba_id)}</span>
+          <span class="text-zinc-500 font-mono ml-1">•••• ${escHtml(row.card_last4)}</span>
+          ${!row.ok ? `<div class="text-red-400 truncate">${escHtml(row.msg)}</div>` : ""}
+        </div>
+      </div>`;
+    }
+    box.innerHTML = html;
+
+    if (d.status === "done" || d.status === "stopped" || d.status === "error") {
+      clearInterval(_cardPollInterval);
+      document.getElementById("cardStopBtn").classList.add("hidden");
+      document.getElementById("cardDoneBtn").classList.remove("hidden");
+      statusEl.textContent += d.status === "done" ? " — Concluído" : " — Parado";
+    }
+  } catch(e) {}
+}
+
+async function stopCardJob() {
+  if (!_cardJobId) return;
+  await fetch(`/cartoes/job/${_cardJobId}/stop`, {method: "POST"});
+  document.getElementById("cardStopBtn").disabled = true;
+  document.getElementById("cardStopBtn").textContent = "Parando…";
+}
+</script>
