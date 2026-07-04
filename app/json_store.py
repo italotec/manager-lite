@@ -106,6 +106,33 @@ def upsert_waba(user_id: int, waba_id: str, token: str, adspower_profile_id: str
         data[key] = entry
         save_user_bms(user_id, data)
 
+def update_waba(user_id: int, old_waba_id: str, new_waba_id: str, token: str,
+                adspower_profile_id: str = "", serial_number: str = "") -> tuple:
+    """Edit an existing WABA in place, re-keying if the WABA ID changed.
+
+    Returns (ok, err). Preserves snapshot/remarks/templates/origin."""
+    with _WRITE_LOCK:
+        data = load_user_bms(user_id)
+        old_key = str(old_waba_id).strip()
+        new_key = str(new_waba_id).strip()
+
+        if old_key not in data or not isinstance(data.get(old_key), dict):
+            return False, "WABA não encontrada."
+        if new_key != old_key and new_key in data:
+            return False, "Já existe uma WABA com esse ID."
+
+        entry = data[old_key]
+        entry["waba_id"] = new_key
+        entry["token"] = token
+        entry["adspower_profile_id"] = adspower_profile_id
+        entry["serial_number"] = serial_number
+
+        if new_key != old_key:
+            del data[old_key]
+        data[new_key] = entry
+        save_user_bms(user_id, data)
+        return True, None
+
 def upsert_waba_full(user_id: int, entry: Dict[str, Any]) -> None:
     """Replica write: merge a whitelisted full WABA entry (incl. snapshot) from Manager."""
     key = str(entry.get("waba_id") or "").strip()
