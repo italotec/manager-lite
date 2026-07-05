@@ -52,6 +52,25 @@ def data(waba_id):
     })
 
 
+@bp.route("/<waba_id>/open-adspower", methods=["POST"])
+@login_required
+def open_adspower(waba_id):
+    entry = load_user_bms(current_user.id).get(str(waba_id))
+    if not isinstance(entry, dict):
+        return jsonify({"ok": False, "error": "WABA não encontrada."}), 404
+
+    profile_id = (entry.get("adspower_profile_id") or "").strip()
+    if not profile_id:
+        return jsonify({"ok": False, "error": "Esta WABA não tem um perfil AdsPower vinculado."}), 400
+
+    from .agent_ws import is_agent_connected, push_to_agent
+    if not is_agent_connected(current_user.id):
+        return jsonify({"ok": False, "error": "Agente não conectado. Abra o cliente local primeiro."}), 400
+
+    push_to_agent(current_user.id, {"type": "open_browser", "profile_id": profile_id, "cmd_id": None})
+    return jsonify({"ok": True})
+
+
 @bp.route("/edit", methods=["POST"])
 @login_required
 def edit():

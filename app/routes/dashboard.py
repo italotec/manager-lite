@@ -52,6 +52,7 @@ def dashboard():
             "waba_id": waba_id,
             "waba_name": snap.get("waba_name") or "—",
             "serial_number": data.get("serial_number") or "",
+            "adspower_profile_id": data.get("adspower_profile_id") or "",
             "phone_numbers": snap.get("phone_numbers") or [],
             "t": t_counts or {
                 "APPROVED": 0,
@@ -73,6 +74,13 @@ def dashboard():
         })
 
     return render_template("dashboard.html", title="Manager Lite", rows=rows)
+
+
+@bp.route("/open-profiles")
+@login_required
+def open_profiles():
+    from .agent_ws import get_open_profiles
+    return jsonify({"open_profile_ids": list(get_open_profiles(current_user.id))})
 
 
 @bp.route("/api-settings")

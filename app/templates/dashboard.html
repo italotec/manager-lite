@@ -540,6 +540,22 @@
 
           <td class="py-3 text-right">
             <div class="inline-flex items-center gap-0.5">
+              {% if row.adspower_profile_id %}
+                <span data-open-pid="{{ row.adspower_profile_id }}"
+                      class="hidden w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"
+                      style="box-shadow:0 0 6px rgba(52,211,153,0.8)"
+                      title="Perfil aberto no AdsPower"></span>
+                <button type="button"
+                        title="Abrir no AdsPower"
+                        onclick="openAdsPowerProfile(event, '{{ row.waba_id }}')"
+                        class="p-1.5 rounded-lg text-zinc-700 group-hover:text-zinc-400 hover:!text-emerald-400 hover:bg-emerald-950/40 transition-colors">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none"
+                       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="3" width="20" height="14" rx="2"></rect>
+                    <path d="M8 21h8"></path><path d="M12 17v4"></path>
+                  </svg>
+                </button>
+              {% endif %}
               <button type="button"
                       title="{{ row.remarks if row.remarks else 'Adicionar observação' }}"
                       data-waba-id="{{ row.waba_id }}"
@@ -1097,6 +1113,35 @@ function renderImportReport(report) {
   result.classList.remove("hidden");
   result.innerHTML = rows.join("");
 }
+
+async function openAdsPowerProfile(event, wabaId) {
+  const btn = event.currentTarget;
+  const dot = btn.previousElementSibling;
+  if (dot?.dataset.openPid) dot.classList.remove("hidden");
+
+  try {
+    const res = await fetch(`/wabas/${wabaId}/open-adspower`, { method: "POST" });
+    const d = await res.json();
+    if (!d.ok) {
+      if (dot?.dataset.openPid) dot.classList.add("hidden");
+      alert("Erro ao abrir perfil: " + (d.error || "?"));
+    }
+  } catch (e) {
+    if (dot?.dataset.openPid) dot.classList.add("hidden");
+    alert("Erro de rede: " + e);
+  }
+}
+
+setInterval(async () => {
+  try {
+    const r = await fetch("/open-profiles");
+    const s = await r.json();
+    const open = new Set(s.open_profile_ids || []);
+    document.querySelectorAll("[data-open-pid]").forEach(el => {
+      el.classList.toggle("hidden", !open.has(el.dataset.openPid));
+    });
+  } catch (e) {}
+}, 10000);
 
 let _remarksWabaId = null;
 
