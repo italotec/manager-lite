@@ -134,7 +134,12 @@ def update_waba(user_id: int, old_waba_id: str, new_waba_id: str, token: str,
         return True, None
 
 def upsert_waba_full(user_id: int, entry: Dict[str, Any]) -> None:
-    """Replica write: merge a whitelisted full WABA entry (incl. snapshot) from Manager."""
+    """Replica write: merge a whitelisted full WABA entry (incl. snapshot) from Manager.
+
+    Blank incoming values never overwrite an existing value. Manager doesn't track
+    Lite-only concepts like adspower_profile_id for most WABAs, so a blank in its
+    payload must not wipe out what the user just configured directly in Lite —
+    same "blanks never overwrite" rule already used by import_wabas/MERGE_FIELDS."""
     key = str(entry.get("waba_id") or "").strip()
     if not key:
         return
@@ -144,8 +149,9 @@ def upsert_waba_full(user_id: int, entry: Dict[str, Any]) -> None:
         for f in ("waba_id", "token", "phone_number_id", "adspower_profile_id",
                   "business_manager_id", "payment_account_id", "remarks",
                   "serial_number"):
-            if f in entry:
-                cur[f] = entry[f]
+            incoming = entry.get(f)
+            if incoming:
+                cur[f] = incoming
         if isinstance(entry.get("snapshot"), dict):
             cur["snapshot"] = entry["snapshot"]
         cur.setdefault("templates", [])
