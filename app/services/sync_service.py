@@ -1,10 +1,12 @@
 """Background sync job: fetch Meta data for all WABAs in parallel.
 
 Job flow:
-1. Load bms.json once up front.
+1. Load bms.json once up front to build the work list (waba_id/token/prev_snapshot).
 2. Submit each WABA to a ThreadPoolExecutor (up to SYNC_MAX_CONCURRENCY at once).
 3. Pure worker _sync_one_waba: makes 4–6 Meta API calls, returns result dict (no I/O).
-4. Single orchestrator thread merges results into in-memory bms dict, writes file once at end.
+4. Single orchestrator thread merges each result into the CURRENT on-disk bms
+   (re-read under the write lock, not the stale snapshot from step 1) so WABAs
+   added/edited/deleted while this job runs are never clobbered.
 """
 from __future__ import annotations
 
@@ -25,7 +27,7 @@ from ..services.meta import (
     get_phone_messaging_limit,
     register_pending_numbers,
 )
-from ..json_store import load_user_bms, save_user_bms
+from ..json_store import load_user_bms, merge_sync_snapshots
 from ..config import Config
 
 _live_jobs: dict[int, dict] = {}
@@ -155,7 +157,9 @@ def _sync_one_waba(api_version: str, waba_id: str, token: str, prev_snap: dict, 
 
 
 def _run_job(app, job_id: int, user_id: int, bms: dict, api_version: str, pin: str) -> None:
-    """Daemon orchestrator: process all WABAs in parallel, write file once at end."""
+    """Daemon orchestrator: process all WABAs in parallel, merge results into the
+    CURRENT on-disk bms (not the stale snapshot captured at job start) so WABAs
+    added/edited/deleted while this job is running are never clobbered."""
     state = _live_jobs[job_id]
     state["status"] = "running"
 
@@ -175,6 +179,7 @@ def _run_job(app, job_id: int, user_id: int, bms: dict, api_version: str, pin: s
 
     checkpoint_interval = 25
     next_checkpoint = checkpoint_interval
+    pending: dict = {}  # key -> snapshot fields, merged into disk at checkpoints
 
     with app.app_context():
         max_workers = _max_concurrency()
@@ -211,11 +216,7 @@ def _run_job(app, job_id: int, user_id: int, bms: dict, api_version: str, pin: s
                     },
                 }
 
-            # Merge into in-memory bms (single thread — safe, no lock needed here)
-            if isinstance(data, dict):
-                snap = data.get("snapshot", {}) if isinstance(data.get("snapshot"), dict) else {}
-                snap.update(result["fields"])
-                data["snapshot"] = snap
+            pending[key] = result["fields"]
 
             # Update counters
             with _jobs_lock:
@@ -236,13 +237,14 @@ def _run_job(app, job_id: int, user_id: int, bms: dict, api_version: str, pin: s
                     "category": cat,
                 })
 
-            # Checkpoint: write every N completions for crash resilience
+            # Checkpoint: merge every N completions for crash resilience
             if state["done"] >= next_checkpoint:
-                save_user_bms(user_id, bms)
+                merge_sync_snapshots(user_id, pending)
+                pending = {}
                 next_checkpoint += checkpoint_interval
 
-    # Final write (covers the tail after last checkpoint)
-    save_user_bms(user_id, bms)
+    # Final merge (covers the tail after last checkpoint)
+    merge_sync_snapshots(user_id, pending)
 
     state["status"] = "stopped" if state.get("stop_requested") else "done"
 

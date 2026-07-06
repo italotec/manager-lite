@@ -269,6 +269,44 @@ def update_snapshot(user_id: int, waba_id: str, **fields) -> None:
         save_user_bms(user_id, data)
 
 
+def merge_sync_snapshots(user_id: int, updates: Dict[str, Dict[str, Any]]) -> None:
+    """Merge sync-produced snapshot fields into the CURRENT on-disk bms.
+
+    `updates` maps bms key -> the snapshot fields to set for that WABA. Re-reads
+    under the write lock so WABAs added/edited/deleted (or snapshot fields like
+    disparou_at set by other flows) while the sync was running are preserved.
+    Keys no longer present on disk are skipped (never resurrected)."""
+    if not updates:
+        return
+    with _WRITE_LOCK:
+        data = load_user_bms(user_id)
+        for key, fields in updates.items():
+            entry = data.get(key)
+            if not isinstance(entry, dict):
+                continue  # WABA deleted / re-keyed during sync — don't resurrect
+            snap = entry.get("snapshot", {}) if isinstance(entry.get("snapshot"), dict) else {}
+            snap.update(fields)
+            entry["snapshot"] = snap
+        save_user_bms(user_id, data)
+
+
+def delete_wabas(user_id: int, waba_ids: list) -> int:
+    """Delete WABAs by waba_id or bms key, under the write lock. Returns count deleted."""
+    with _WRITE_LOCK:
+        data = load_user_bms(user_id)
+        deleted = 0
+        for key in list(data.keys()):
+            entry = data.get(key)
+            if isinstance(entry, dict):
+                wid = str(entry.get("waba_id") or "").strip()
+                if wid in waba_ids or key in waba_ids:
+                    del data[key]
+                    deleted += 1
+        if deleted:
+            save_user_bms(user_id, data)
+        return deleted
+
+
 def save_waba_remarks(user_id: int, waba_id: str, text: str) -> None:
     with _WRITE_LOCK:
         data = load_user_bms(user_id)

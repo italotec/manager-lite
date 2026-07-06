@@ -15,9 +15,9 @@ from ..services.meta import templates_status_summary
 from ..json_store import (
     ensure_user_bms_file,
     load_user_bms,
-    save_user_bms,
     save_waba_remarks,
     import_wabas,
+    delete_wabas as delete_wabas_store,
 )
 from ..services.sync_service import (
     start_sync_job,
@@ -284,17 +284,7 @@ def delete_wabas():
     if not isinstance(waba_ids, list) or not waba_ids:
         return jsonify({"error": "invalid_payload"}), 400
 
-    bms = load_user_bms(current_user.id)
-    deleted = 0
-    for key in list(bms.keys()):
-        entry = bms.get(key)
-        if isinstance(entry, dict):
-            wid = str(entry.get("waba_id") or "").strip()
-            if wid in waba_ids or key in waba_ids:
-                del bms[key]
-                deleted += 1
-
-    save_user_bms(current_user.id, bms)
+    deleted = delete_wabas_store(current_user.id, waba_ids)
     return jsonify({"deleted": deleted})
 
 
