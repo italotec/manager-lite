@@ -17,3 +17,7 @@ except ImportError:
 
 DEFAULT_SERVER_URL = os.getenv("SERVER_URL", "https://manager-lite.verifywaba.store")
 DEFAULT_API_KEY = os.getenv("API_KEY", "")
+
+# AdsPower group whose profiles are synced to the "Verificar" page for the
+# "Vincular ao Manager" (Conectar) flow.
+VERIFICAR_GROUP_NAME = os.getenv("VERIFICAR_GROUP_NAME", "Verificar")

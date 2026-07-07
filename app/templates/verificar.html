@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- ── Page header ────────────────────────────────────────────────────────── -->
+<div class="flex items-center justify-between mb-5">
+  <div>
+    <h1 class="text-xl font-bold">Verificar</h1>
+    <p class="text-xs text-zinc-400 mt-0.5">Perfis AdsPower do grupo "Verificar" sincronizados pelo agente. Conecte para compartilhar a WABA com o BM parceiro e registrá-la no Manager Lite.</p>
+  </div>
+</div>
+
+<div id="emptyState" class="text-center py-20 text-zinc-500 hidden">
+  <div class="text-5xl mb-3">🔎</div>
+  <div class="text-base font-medium">Nenhum perfil no grupo "Verificar"</div>
+  <div class="text-sm mt-1">Conecte o agente e mova perfis do AdsPower para o grupo "Verificar".</div>
+</div>
+
+<div id="tableWrap" class="overflow-x-auto rounded-2xl border border-zinc-800 hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-zinc-900 text-zinc-400 text-xs uppercase">
+      <tr>
+        <th class="py-3 pl-4 pr-2 text-left w-8">
+          <input type="checkbox" id="selectAll" class="w-4 h-4 accent-cyan-500" onchange="toggleAll(this.checked)">
+        </th>
+        <th class="py-3 px-3 text-left">Perfil</th>
+        <th class="py-3 px-3 text-left">Grupo</th>
+        <th class="py-3 px-3 text-left">WABA</th>
+        <th class="py-3 px-3 text-left">Status</th>
+      </tr>
+    </thead>
+    <tbody id="rowsBody" class="divide-y divide-zinc-800/60"></tbody>
+  </table>
+</div>
+
+<!-- Bulk conectar bar -->
+<div id="bulkBar" class="hidden mt-3 flex items-center gap-3">
+  <span id="bulkCount" class="text-sm text-zinc-400"></span>
+  <button onclick="conectarSelected()" id="btnConectar"
+          class="px-3 py-1.5 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-sm font-semibold text-white">
+    Conectar
+  </button>
+</div>
+
+<!-- ── Toast ──────────────────────────────────────────────────────────────── -->
+<div id="toast" class="fixed bottom-6 right-6 z-50 hidden">
+  <div id="toastBody" class="px-4 py-3 rounded-xl border text-sm shadow-xl"></div>
+</div>
+
+<script>
+let _rows = [];
+let _selected = new Set();
+
+function statusBadge(row) {
+  if (row.linking_at) {
+    return '<span class="text-xs px-2 py-0.5 rounded-full bg-amber-900/50 text-amber-300 border border-amber-800/50 animate-pulse">Vinculando…</span>';
+  }
+  let badges = "";
+  if (row.shared_to_partner_at) {
+    badges += '<span class="text-xs px-2 py-0.5 rounded-full bg-cyan-900/50 text-cyan-300 border border-cyan-800/50 mr-1">Compartilhada</span>';
+  }
+  if (row.registered_with_manager_at) {
+    badges += '<span class="text-xs px-2 py-0.5 rounded-full bg-emerald-900/50 text-emerald-400 border border-emerald-800/50">Conectada</span>';
+  }
+  if (!badges) {
+    badges = '<span class="text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 border border-zinc-700">Não conectada</span>';
+  }
+  if (row.last_error) {
+    badges += '<div class="text-xs text-red-400 mt-0.5 max-w-[220px] truncate" title="' +
+      escapeHtml(row.last_error) + '">' + escapeHtml(row.last_error) + '</div>';
+  }
+  return badges;
+}
+
+function escapeHtml(s) {
+  const d = document.createElement("div");
+  d.textContent = s || "";
+  return d.innerHTML;
+}
+
+function renderRows() {
+  const body = document.getElementById("rowsBody");
+  const empty = document.getElementById("emptyState");
+  const wrap = document.getElementById("tableWrap");
+
+  if (!_rows.length) {
+    empty.classList.remove("hidden");
+    wrap.classList.add("hidden");
+    return;
+  }
+  empty.classList.add("hidden");
+  wrap.classList.remove("hidden");
+
+  body.innerHTML = _rows.map(row => `
+    <tr class="hover:bg-zinc-900/40 transition-colors">
+      <td class="py-3 pl-4 pr-2">
+        <input type="checkbox" class="row-check w-4 h-4 accent-cyan-500" value="${row.profile_id}"
+               ${_selected.has(row.profile_id) ? "checked" : ""}
+               onchange="onRowCheck('${row.profile_id}', this.checked)">
+      </td>
+      <td class="py-3 px-3 text-zinc-300">${escapeHtml(row.name) || "—"}</td>
+      <td class="py-3 px-3 text-zinc-400">${escapeHtml(row.group_name) || "—"}</td>
+      <td class="py-3 px-3 font-mono text-zinc-400 text-xs">${escapeHtml(row.waba_id) || "—"}</td>
+      <td class="py-3 px-3">${statusBadge(row)}</td>
+    </tr>
+  `).join("");
+
+  updateBulkBar();
+}
+
+function onRowCheck(pid, checked) {
+  if (checked) _selected.add(pid); else _selected.delete(pid);
+  updateBulkBar();
+}
+
+function toggleAll(checked) {
+  _selected = new Set(checked ? _rows.map(r => r.profile_id) : []);
+  renderRows();
+}
+
+function updateBulkBar() {
+  const bar = document.getElementById("bulkBar");
+  const cnt = document.getElementById("bulkCount");
+  if (_selected.size > 0) {
+    bar.classList.remove("hidden");
+    cnt.textContent = _selected.size + " selecionado(s)";
+  } else {
+    bar.classList.add("hidden");
+  }
+}
+
+async function conectarSelected() {
+  const ids = Array.from(_selected);
+  if (!ids.length) return;
+  const btn = document.getElementById("btnConectar");
+  btn.disabled = true;
+  try {
+    const r = await fetch("{{ url_for('verificar.link') }}", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profile_ids: ids }),
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      showToast(d.error || "Erro ao conectar.", false);
+      return;
+    }
+    showToast(`${d.enqueued} perfil(is) enfileirado(s)` + (d.skipped ? `, ${d.skipped} já conectado(s)` : ""), true);
+    await fetchRows();
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function fetchRows() {
+  const r = await fetch("{{ url_for('verificar.rows') }}");
+  const d = await r.json();
+  _rows = d.rows || [];
+  renderRows();
+}
+
+function showToast(msg, ok) {
+  const t = document.getElementById("toast");
+  const b = document.getElementById("toastBody");
+  b.textContent = msg;
+  b.className = "px-4 py-3 rounded-xl border text-sm shadow-xl " +
+    (ok ? "bg-emerald-950/80 border-emerald-700 text-emerald-300"
+        : "bg-red-950/80 border-red-700 text-red-300");
+  t.classList.remove("hidden");
+  setTimeout(() => t.classList.add("hidden"), 4000);
+}
+
+fetchRows();
+setInterval(fetchRows, 2000);
+</script>
+{% endblock %}

@@ -30,6 +30,7 @@ def create_app():
     from .routes.account import bp as account_bp
     from .routes.photos_bp import bp as photos_bp
     from .routes.cartoes import bp as cartoes_bp
+    from .routes.verificar import bp as verificar_bp
     from .routes.agent_ws import bp as agent_ws_bp, handle_ws as agent_handle_ws
 
     app.register_blueprint(auth_bp)
@@ -44,6 +45,7 @@ def create_app():
     app.register_blueprint(account_bp)
     app.register_blueprint(photos_bp)
     app.register_blueprint(cartoes_bp)
+    app.register_blueprint(verificar_bp)
     app.register_blueprint(agent_ws_bp)
 
     sock.route("/agent/ws")(agent_handle_ws)
@@ -77,6 +79,15 @@ def create_app():
         if "sync_enabled" not in cols:
             db.session.execute(db.text(
                 "ALTER TABLE user ADD COLUMN sync_enabled BOOLEAN NOT NULL DEFAULT 1"))
+            db.session.commit()
+
+        if "share_partner_business_id" not in cols:
+            db.session.execute(db.text(
+                "ALTER TABLE user ADD COLUMN share_partner_business_id VARCHAR(64)"))
+            db.session.commit()
+        if "share_meta_token" not in cols:
+            db.session.execute(db.text(
+                "ALTER TABLE user ADD COLUMN share_meta_token TEXT"))
             db.session.commit()
 
         # Recover DisparoJobs left "running"/"queued" by a previous restart. The

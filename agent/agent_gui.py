@@ -82,7 +82,7 @@ FONT_SM  = ("Segoe UI", 9)
 class AgentApp:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("Card Client — Manager Lite")
+        self.root.title("Manager Lite")
         self.root.configure(bg=BG)
         self.root.resizable(False, False)
         self.root.geometry("540x520")
@@ -115,24 +115,13 @@ class AgentApp:
 
         title_frame = tk.Frame(logo_frame, bg=CARD)
         title_frame.pack(side="left", padx=(10, 0))
-        tk.Label(title_frame, text="Card Client", bg=CARD, fg=TEXT,
+        tk.Label(title_frame, text="Manager Lite", bg=CARD, fg=TEXT,
                  font=FONT_BIG, anchor="w").pack(anchor="w")
-        tk.Label(title_frame, text="Manager Lite — adicionar cartão", bg=CARD, fg=MUTED,
-                 font=FONT_SM, anchor="w").pack(anchor="w")
 
         form = tk.Frame(self.root, bg=BG, padx=20, pady=20)
         form.pack(fill="x")
 
-        tk.Label(form, text="Server URL", bg=BG, fg=MUTED,
-                 font=FONT_SM, anchor="w").pack(fill="x", pady=(0, 4))
-
         self.server_var = tk.StringVar(value=DEFAULT_SERVER_URL)
-        server_entry = tk.Entry(
-            form, textvariable=self.server_var,
-            bg=ENTRY_BG, fg=TEXT, insertbackground=TEXT,
-            relief="flat", font=FONT_MONO, bd=8,
-        )
-        server_entry.pack(fill="x", pady=(0, 14), ipady=2)
 
         tk.Label(form, text="API Key", bg=BG, fg=MUTED,
                  font=FONT_SM, anchor="w").pack(fill="x", pady=(0, 4))

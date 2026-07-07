@@ -11,3 +11,4 @@ agent/build/
 agent/dist/
 agent/debug/
 agent/logs/
+agent/.buildvenv/

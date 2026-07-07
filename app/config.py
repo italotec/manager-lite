@@ -40,3 +40,8 @@ class Config:
     # Shared secret for the inbound sync endpoint (/api/v1/sync/users). Must match
     # LITE_SYNC_TOKEN in GERENCIADOR DE BMS. Empty => endpoint rejects everything.
     LITE_SYNC_TOKEN = os.getenv("LITE_SYNC_TOKEN", "85USGKdojLVSVNRCYjJNY3HkKRg9q281hKb6ZU3Rnc")
+
+    # Public base URL the local agent uses to call back into this app's own
+    # /api/v1/business-managers endpoint during the "Vincular ao Manager" flow.
+    # Falls back to request.host_url at dispatch time when unset.
+    MANAGER_BASE_URL = os.getenv("MANAGER_BASE_URL", "")

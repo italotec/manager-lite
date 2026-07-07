@@ -18,3 +18,13 @@ def save_sync():
     db.session.commit()
     flash("Preferência de sincronização salva.", "success")
     return redirect(url_for("account.account_page"))
+
+
+@bp.route("/conta/vincular", methods=["POST"])
+@login_required
+def save_vincular():
+    current_user.share_partner_business_id = (request.form.get("share_partner_business_id") or "").strip()
+    current_user.share_meta_token = (request.form.get("share_meta_token") or "").strip()
+    db.session.commit()
+    flash("Configuração de vínculo salva.", "success")
+    return redirect(url_for("account.account_page"))

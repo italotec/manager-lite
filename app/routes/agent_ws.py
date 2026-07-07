@@ -2,18 +2,21 @@
 
 The agent (a Tkinter client running next to AdsPower on the operator's PC)
 connects here and authenticates with the user's existing Lite API key. The
-server pushes add_card commands and correlates replies by cmd_id.
+server pushes add_card commands and correlates replies by cmd_id. It also
+receives async pushes (profiles_push, link_start/done/summary) that have no
+cmd_id and are handled by dedicated handlers instead of the reply-queue path.
 """
 import json
 import queue
 import threading
 import uuid
+from datetime import datetime
 from dataclasses import dataclass, field
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_login import login_required, current_user
 
-from ..models import User
+from ..models import User, VerificarProfile
 from .. import db
 
 bp = Blueprint("agent_ws", __name__, url_prefix="/agent")
@@ -107,14 +110,100 @@ def _handle_browser_status(user_id: int, open_profile_ids: list):
         _open_browsers[user_id] = set(open_profile_ids)
 
 
-def _handle_agent_message(user_id: int, data: str):
+def _handle_profiles_push(app, user_id: int, profiles: list):
+    with app.app_context():
+        incoming_ids = {p["profile_id"] for p in profiles}
+
+        for p in profiles:
+            profile = db.session.get(VerificarProfile, p["profile_id"])
+            if profile is None:
+                profile = VerificarProfile(profile_id=p["profile_id"], user_id=user_id)
+                db.session.add(profile)
+            profile.user_id    = user_id
+            profile.name       = p.get("name", "")
+            profile.group_name = p.get("group_name", "")
+            profile.remark     = p.get("remark", "")
+            profile.synced_at  = datetime.utcnow()
+
+        existing = VerificarProfile.query.filter_by(user_id=user_id).all()
+        stale = [p for p in existing if p.profile_id not in incoming_ids]
+        for profile in stale:
+            db.session.delete(profile)
+
+        db.session.commit()
+        print(f"[AGENT WS] user_id={user_id}: {len(profiles)} perfis Verificar sincronizados, {len(stale)} removidos")
+
+
+def _handle_link_start(app, msg: dict):
+    print(f"[AGENT WS] link_start profile={msg.get('profile_id')}")
+
+
+def _apply_link_result(profile: VerificarProfile, msg: dict):
+    status = msg.get("status")
+    if msg.get("waba_id"):
+        profile.waba_id = msg["waba_id"]
+    if msg.get("business_id"):
+        profile.business_id = msg["business_id"]
+
+    if status == "ok":
+        if msg.get("shared"):
+            profile.shared_to_partner_at = datetime.utcnow()
+        if msg.get("registered"):
+            profile.registered_with_manager_at = datetime.utcnow()
+        profile.last_error = ""
+    elif status == "restrita":
+        profile.last_error = "BM restrito"
+        profile.error_count += 1
+    elif status == "error":
+        profile.last_error = msg.get("message") or "Erro desconhecido"
+        profile.error_count += 1
+    profile.linking_at = None
+
+
+def _handle_link_done(app, msg: dict):
+    with app.app_context():
+        profile = db.session.get(VerificarProfile, msg.get("profile_id"))
+        if not profile:
+            return
+        _apply_link_result(profile, msg)
+        db.session.commit()
+
+
+def _handle_link_summary(app, msg: dict):
+    with app.app_context():
+        profile = db.session.get(VerificarProfile, msg.get("profile_id"))
+        if not profile:
+            return
+        profile.linking_at = None
+        if msg.get("status") == "error":
+            profile.last_error = f"Falhou {msg.get('failed', 0)}/{msg.get('total', 0)} BM(s)"
+            profile.error_count += 1
+        db.session.commit()
+
+
+def _handle_agent_message(app, user_id: int, data: str):
     try:
         msg = json.loads(data)
     except Exception:
         return
-    if msg.get("type") == "browser_status":
+
+    msg_type = msg.get("type")
+    if msg_type == "browser_status":
         _handle_browser_status(user_id, msg.get("open_profile_ids", []))
         return
+    if msg_type == "profiles_push":
+        _handle_profiles_push(app, user_id, msg.get("profiles", []))
+        return
+    if msg_type == "link_start":
+        _handle_link_start(app, msg)
+        return
+    if msg_type == "link_done":
+        _handle_link_done(app, msg)
+        return
+    if msg_type == "link_summary":
+        _handle_link_summary(app, msg)
+        return
+
     cmd_id = msg.get("cmd_id")
     if cmd_id:
         with _pending_lock:
@@ -127,6 +216,7 @@ def _handle_agent_message(user_id: int, data: str):
 # ── WebSocket handler (registered via sock.route in __init__.py) ──────────────
 
 def handle_ws(ws):
+    app = current_app._get_current_object()
     user = _auth_user()
     if not user:
         db.session.remove()
@@ -196,7 +286,7 @@ def handle_ws(ws):
                     break
                 continue
             try:
-                _handle_agent_message(user_id, data)
+                _handle_agent_message(app, user_id, data)
             except Exception as e:
                 print(f"[AGENT WS] message handling error: {type(e).__name__}: {e}")
     finally:

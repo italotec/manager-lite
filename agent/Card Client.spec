@@ -16,6 +16,7 @@ datas = [
     ('services', 'services'),
     ('agent_core.py', '.'),
     ('config.py', '.'),
+    ('prosperidadelogo.ico', '.'),
 ]
 binaries = []
 hiddenimports = [
@@ -88,6 +89,7 @@ exe = EXE(
     a.datas,
     [],
     name='Card Client',
+    icon=['prosperidadelogo.ico'],
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

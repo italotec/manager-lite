@@ -33,6 +33,11 @@ class User(db.Model, UserMixin):
     # nor reads them (both /sync/users and /sync/pending-wabas skip them).
     sync_enabled = db.Column(db.Boolean, default=True, nullable=False)
 
+    # Partner Business Manager + Meta token used by the "Vincular ao Manager"
+    # (Verificar) flow to share a WABA to a partner BM before registering it.
+    share_partner_business_id = db.Column(db.String(64), nullable=True)
+    share_meta_token = db.Column(db.Text, nullable=True)
+
     def generate_api_key(self):
         self.api_key = secrets.token_urlsafe(32)
 
@@ -154,6 +159,47 @@ class Card(db.Model):
             "status": self.status,
             "last_error": self.last_error,
             "created_at": self.created_at.strftime("%d/%m/%Y") if self.created_at else "",
+        }
+
+
+class VerificarProfile(db.Model):
+    """AdsPower profile in the "Verificar" group, synced by the local agent.
+
+    Tracks the "Vincular ao Manager" (Conectar) link state: share the WABA to
+    a partner Business Manager on Facebook, then register it with Manager
+    Lite's own /api/v1/business-managers endpoint.
+    """
+    profile_id = db.Column(db.String(64), primary_key=True)
+    user_id    = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    name       = db.Column(db.String(255), default="", nullable=False)
+    group_name = db.Column(db.String(64),  default="", nullable=False)
+    remark     = db.Column(db.Text,        default="", nullable=False)
+    synced_at  = db.Column(db.DateTime,    default=_now_sp, nullable=False)
+
+    business_id = db.Column(db.String(64),  nullable=True)
+    waba_id     = db.Column(db.String(64),  nullable=True)
+    waba_name   = db.Column(db.String(255), nullable=True)
+
+    linking_at                 = db.Column(db.DateTime,   nullable=True)
+    shared_to_partner_at       = db.Column(db.DateTime,   nullable=True)
+    shared_partner_business_id = db.Column(db.String(64), nullable=True)
+    registered_with_manager_at = db.Column(db.DateTime,   nullable=True)
+
+    last_error  = db.Column(db.Text,    default="", nullable=False)
+    error_count = db.Column(db.Integer, default=0,  nullable=False)
+
+    def to_dict(self):
+        return {
+            "profile_id": self.profile_id,
+            "name": self.name,
+            "group_name": self.group_name,
+            "waba_id": self.waba_id,
+            "waba_name": self.waba_name,
+            "business_id": self.business_id,
+            "linking_at": bool(self.linking_at),
+            "shared_to_partner_at": bool(self.shared_to_partner_at),
+            "registered_with_manager_at": bool(self.registered_with_manager_at),
+            "last_error": self.last_error or "",
         }
 
 
