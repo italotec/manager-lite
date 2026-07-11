@@ -203,6 +203,60 @@ class VerificarProfile(db.Model):
         }
 
 
+class ScanProfile(db.Model):
+    """One AdsPower profile scanned by the WABA health scanner.
+
+    Row existence (keyed by profile_id) is what drives resume: a restarted
+    scan skips any profile already present here.
+    """
+    profile_id   = db.Column(db.String(64), primary_key=True)
+    user_id      = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    profile_name = db.Column(db.String(255), default="", nullable=False)
+    outcome      = db.Column(db.String(32), default="", nullable=False)  # ok|checkpoint|not_logged_in|error
+    detail       = db.Column(db.Text, default="", nullable=False)
+    scanned_at   = db.Column(db.DateTime, default=_now_sp, nullable=False)
+
+    def to_dict(self):
+        return {
+            "profile_id": self.profile_id,
+            "profile_name": self.profile_name,
+            "outcome": self.outcome,
+            "detail": self.detail,
+            "scanned_at": self.scanned_at.strftime("%d/%m/%Y %H:%M") if self.scanned_at else "",
+        }
+
+
+class ScanWaba(db.Model):
+    """One WABA found by the health scanner — one row per WABA per profile."""
+    id           = db.Column(db.Integer, primary_key=True)
+    user_id      = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    waba_id      = db.Column(db.String(64), nullable=False, index=True)
+    waba_name    = db.Column(db.String(255), default="", nullable=False)
+    business_id  = db.Column(db.String(64), default="", nullable=False)
+    profile_id   = db.Column(db.String(64), nullable=False, index=True)
+    profile_name = db.Column(db.String(255), default="", nullable=False)
+    # approved|appealable|in_review|permanent|restricted|error
+    state        = db.Column(db.String(32), default="", nullable=False)
+    appeal_sent  = db.Column(db.Boolean, default=False, nullable=False)
+    scanned_at   = db.Column(db.DateTime, default=_now_sp, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint("user_id", "waba_id", name="uq_scanwaba_user_waba"),
+    )
+
+    def to_dict(self):
+        return {
+            "waba_id": self.waba_id,
+            "waba_name": self.waba_name,
+            "business_id": self.business_id,
+            "profile_id": self.profile_id,
+            "profile_name": self.profile_name,
+            "state": self.state,
+            "appeal_sent": self.appeal_sent,
+            "scanned_at": self.scanned_at.strftime("%d/%m/%Y %H:%M") if self.scanned_at else "",
+        }
+
+
 class PhotoModel(db.Model):
     """Saved profile picture — reusable across WABAs."""
     id         = db.Column(db.Integer, primary_key=True)

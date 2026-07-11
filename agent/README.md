@@ -37,10 +37,11 @@ Click **Conectar**. The status dot turns green when connected. Leave the app
 running while you use the "Adicionar Cartão" bulk action or the "Abrir no
 AdsPower" button on the dashboard.
 
-Each WABA you add a card to must have `business_manager_id` and
-`adspower_profile_id` set (Manager Lite → Dashboard → edit WABA) — the agent
-needs both to know which AdsPower profile to open and which Business Manager
-owns the WABA's billing.
+Each WABA you add a card to must have `adspower_profile_id` set (Manager Lite →
+Dashboard → edit WABA) so the agent knows which AdsPower profile to open.
+`business_manager_id` is optional — if it's blank, the agent resolves the
+owning Business Manager live from the logged-in Facebook session before
+adding the card.
 
 ## WebSocket protocol (for reference)
 

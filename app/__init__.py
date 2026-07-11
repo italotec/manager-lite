@@ -31,6 +31,7 @@ def create_app():
     from .routes.photos_bp import bp as photos_bp
     from .routes.cartoes import bp as cartoes_bp
     from .routes.verificar import bp as verificar_bp
+    from .routes.scanner import bp as scanner_bp
     from .routes.agent_ws import bp as agent_ws_bp, handle_ws as agent_handle_ws
 
     app.register_blueprint(auth_bp)
@@ -46,6 +47,7 @@ def create_app():
     app.register_blueprint(photos_bp)
     app.register_blueprint(cartoes_bp)
     app.register_blueprint(verificar_bp)
+    app.register_blueprint(scanner_bp)
     app.register_blueprint(agent_ws_bp)
 
     sock.route("/agent/ws")(agent_handle_ws)

@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- ── Page header ────────────────────────────────────────────────────────── -->
+<div class="flex items-center justify-between mb-5 flex-wrap gap-3">
+  <div>
+    <h1 class="text-xl font-bold">Scanner de WABAs</h1>
+    <p class="text-xs text-zinc-400 mt-0.5">Abre cada perfil do AdsPower e verifica a saúde das WABAs (aprovada, banida com recurso, banida permanentemente, em checkpoint, etc).</p>
+  </div>
+  <div class="flex items-center gap-3">
+    <label class="flex items-center gap-2 text-sm text-zinc-300">
+      <input type="checkbox" id="autoAppeal" class="w-4 h-4 accent-teal-500" checked>
+      Apelar automaticamente
+    </label>
+    <button onclick="startScan(false)" id="btnScan"
+            class="px-4 py-2 rounded-xl bg-teal-700 hover:bg-teal-600 text-sm font-semibold text-white">
+      Escanear
+    </button>
+    <button onclick="stopScan()" id="btnStop"
+            class="px-4 py-2 rounded-xl bg-red-900/60 hover:bg-red-800/60 text-sm font-semibold text-red-300 hidden">
+      Parar
+    </button>
+    <button onclick="startScan(true)" id="btnRescan"
+            class="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sm font-semibold">
+      Reescanear tudo
+    </button>
+  </div>
+</div>
+
+<!-- ── Progress ───────────────────────────────────────────────────────────── -->
+<div id="progressBar" class="hidden mb-4 rounded-2xl border border-zinc-800 bg-zinc-900/30 p-4">
+  <div class="text-sm text-zinc-300" id="progressText">—</div>
+  <div class="w-full h-2 bg-zinc-800 rounded-full mt-2 overflow-hidden">
+    <div id="progressFill" class="h-full bg-teal-600 transition-all" style="width:0%"></div>
+  </div>
+</div>
+
+<div id="emptyState" class="text-center py-20 text-zinc-500 hidden">
+  <div class="text-5xl mb-3">📡</div>
+  <div class="text-base font-medium">Nenhuma WABA escaneada ainda</div>
+  <div class="text-sm mt-1">Clique em "Escanear" para abrir os perfis do AdsPower e verificar as WABAs.</div>
+</div>
+
+<div id="tableWrap" class="overflow-x-auto rounded-2xl border border-zinc-800 hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-zinc-900 text-zinc-400 text-xs uppercase">
+      <tr>
+        <th class="py-3 px-3 text-left w-12"></th>
+        <th class="py-3 px-3 text-left">WABA</th>
+        <th class="py-3 px-3 text-left">Perfil</th>
+        <th class="py-3 px-3 text-left">Status</th>
+        <th class="py-3 px-3 text-left">Ações</th>
+      </tr>
+    </thead>
+    <tbody id="rowsBody" class="divide-y divide-zinc-800/60"></tbody>
+  </table>
+</div>
+
+<!-- ── Toast ──────────────────────────────────────────────────────────────── -->
+<div id="toast" class="fixed bottom-6 right-6 z-50 hidden">
+  <div id="toastBody" class="px-4 py-3 rounded-xl border text-sm shadow-xl"></div>
+</div>
+
+<script>
+let _rows = [];
+let _jobId = localStorage.getItem("scannerJobId") ? parseInt(localStorage.getItem("scannerJobId")) : null;
+let _pollInterval = null;
+
+const STATE_BADGES = {
+  approved:      ['Aprovada',            'bg-emerald-900/50 text-emerald-400 border-emerald-800/50'],
+  appealable:    ['Banida (apelável)',   'bg-amber-900/50 text-amber-300 border-amber-800/50'],
+  in_review:     ['Em análise',          'bg-cyan-900/50 text-cyan-300 border-cyan-800/50'],
+  permanent:     ['Banida (permanente)', 'bg-red-900/50 text-red-400 border-red-800/50'],
+  restricted:    ['Restrita',            'bg-orange-900/50 text-orange-300 border-orange-800/50'],
+  error:         ['Erro',                'bg-zinc-800 text-zinc-400 border-zinc-700'],
+};
+
+function statusBadge(row) {
+  const [label, cls] = STATE_BADGES[row.state] || [row.state || '—', 'bg-zinc-800 text-zinc-400 border-zinc-700'];
+  let html = `<span class="text-xs px-2 py-0.5 rounded-full border ${cls}">${label}</span>`;
+  if (row.appeal_sent) {
+    html += ' <span class="text-xs px-2 py-0.5 rounded-full bg-cyan-900/50 text-cyan-300 border border-cyan-800/50">apelação enviada ✓</span>';
+  }
+  return html;
+}
+
+function escapeHtml(s) {
+  const d = document.createElement("div");
+  d.textContent = s || "";
+  return d.innerHTML;
+}
+
+function renderRows() {
+  const body = document.getElementById("rowsBody");
+  const empty = document.getElementById("emptyState");
+  const wrap = document.getElementById("tableWrap");
+
+  if (!_rows.length) {
+    empty.classList.remove("hidden");
+    wrap.classList.add("hidden");
+    return;
+  }
+  empty.classList.add("hidden");
+  wrap.classList.remove("hidden");
+
+  body.innerHTML = _rows.map(row => `
+    <tr class="hover:bg-zinc-900/40 transition-colors">
+      <td class="py-3 px-3">
+        <button title="Abrir no AdsPower" onclick="openProfile('${row.profile_id}')"
+                class="w-7 h-7 rounded-lg bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center">🔗</button>
+      </td>
+      <td class="py-3 px-3">
+        <div class="text-zinc-300">${escapeHtml(row.waba_name) || "—"}</div>
+        <div class="font-mono text-zinc-500 text-xs">${escapeHtml(row.waba_id)}</div>
+      </td>
+      <td class="py-3 px-3 text-zinc-400">${escapeHtml(row.profile_name) || escapeHtml(row.profile_id)}</td>
+      <td class="py-3 px-3">${statusBadge(row)}</td>
+      <td class="py-3 px-3">
+        ${row.state === 'appealable'
+          ? `<button onclick="appealWaba('${row.waba_id}')" class="text-xs px-2 py-1 rounded-lg bg-amber-800/60 hover:bg-amber-700/60 text-amber-200">Apelar</button>`
+          : ''}
+      </td>
+    </tr>
+  `).join("");
+}
+
+async function fetchRows() {
+  const r = await fetch("{{ url_for('scanner.rows') }}");
+  const d = await r.json();
+  _rows = d.rows || [];
+  renderRows();
+}
+
+async function openProfile(profileId) {
+  const r = await fetch(`/scanner/open/${profileId}`, { method: "POST" });
+  const d = await r.json();
+  if (!d.ok) showToast(d.error || "Erro ao abrir perfil.", false);
+  else showToast("Abrindo perfil no AdsPower…", true);
+}
+
+async function appealWaba(wabaId) {
+  const r = await fetch(`/scanner/appeal/${wabaId}`, { method: "POST" });
+  const d = await r.json();
+  if (!d.ok) { showToast(d.error || "Erro ao enviar apelação.", false); return; }
+  showToast("Apelação enviada.", true);
+  await fetchRows();
+}
+
+async function startScan(rescan) {
+  document.getElementById("btnScan").disabled = true;
+  document.getElementById("btnRescan").disabled = true;
+  try {
+    const r = await fetch("{{ url_for('scanner.scan_start') }}", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        auto_appeal: document.getElementById("autoAppeal").checked,
+        rescan: !!rescan,
+      }),
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      showToast(d.error || "Erro ao iniciar scan.", false);
+      return;
+    }
+    _jobId = d.job_id;
+    localStorage.setItem("scannerJobId", _jobId);
+    startPolling();
+  } finally {
+    document.getElementById("btnScan").disabled = false;
+    document.getElementById("btnRescan").disabled = false;
+  }
+}
+
+async function stopScan() {
+  if (!_jobId) return;
+  await fetch(`/scanner/job/${_jobId}/stop`, { method: "POST" });
+}
+
+function startPolling() {
+  document.getElementById("btnStop").classList.remove("hidden");
+  document.getElementById("progressBar").classList.remove("hidden");
+  if (_pollInterval) clearInterval(_pollInterval);
+  pollJob();
+  _pollInterval = setInterval(pollJob, 2000);
+}
+
+async function pollJob() {
+  if (!_jobId) return;
+  const r = await fetch(`/scanner/job/${_jobId}`);
+  const d = await r.json();
+  if (!d.ok) {
+    clearInterval(_pollInterval);
+    document.getElementById("btnStop").classList.add("hidden");
+    return;
+  }
+  const total = d.total || 0;
+  const done = d.done || 0;
+  const pct = total ? Math.round(done / total * 100) : 0;
+  document.getElementById("progressText").textContent =
+    `${done}/${total} perfis (${pct}%) — ✅ ${d.success || 0}  ❌ ${d.failed || 0}`;
+  document.getElementById("progressFill").style.width = pct + "%";
+  await fetchRows();
+
+  if (d.status === "done" || d.status === "stopped" || d.status === "error") {
+    clearInterval(_pollInterval);
+    document.getElementById("btnStop").classList.add("hidden");
+    localStorage.removeItem("scannerJobId");
+    if (d.status === "error") showToast(d.error || "Erro no scan.", false);
+    else showToast(d.status === "stopped" ? "Scan interrompido." : "Scan concluído.", true);
+  }
+}
+
+function showToast(msg, ok) {
+  const t = document.getElementById("toast");
+  const b = document.getElementById("toastBody");
+  b.textContent = msg;
+  b.className = "px-4 py-3 rounded-xl border text-sm shadow-xl " +
+    (ok ? "bg-emerald-950/80 border-emerald-700 text-emerald-300"
+        : "bg-red-950/80 border-red-700 text-red-300");
+  t.classList.remove("hidden");
+  setTimeout(() => t.classList.add("hidden"), 4000);
+}
+
+fetchRows();
+setInterval(fetchRows, 5000);
+if (_jobId) startPolling();
+</script>
+{% endblock %}

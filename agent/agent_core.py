@@ -45,8 +45,6 @@ def _execute_add_card_sync(msg: dict, log=print) -> dict:
 
     if not profile_id:
         return _result(False, error="profile_id ausente no comando")
-    if not business_id:
-        return _result(False, error="WABA sem business_manager_id definido no Manager Lite")
 
     log(f"[CARD {profile_id}] Iniciando add_card (•••• {str(card.get('number',''))[-4:]})")
 
@@ -54,6 +52,7 @@ def _execute_add_card_sync(msg: dict, log=print) -> dict:
         from services.adspower import connect_cdp_with_retry
         from playwright.sync_api import sync_playwright
         from services import facebook_card
+        from services import facebook_link
     except Exception as exc:
         return _result(False, error=f"Falha ao importar dependências: {exc}")
 
@@ -80,6 +79,11 @@ def _execute_add_card_sync(msg: dict, log=print) -> dict:
             )
             ctx  = browser.contexts[0] if browser.contexts else browser.new_context()
             page = ctx.new_page()
+
+            if not business_id:
+                business_id = facebook_link.resolve_owning_business_id(page, log=log) or ""
+                if not business_id:
+                    return _result(False, error="Não foi possível resolver o business_id do perfil")
 
             res = facebook_card.add_card_via_cdp(page, card, business_id=business_id, waba_id=waba_id, log=log)
             return _result(
@@ -302,6 +306,262 @@ async def _profile_sync_pinger(outbox: asyncio.Queue, stop: asyncio.Event, log=p
         await _sync_profiles(outbox, log)
 
 
+# ── List-all-profiles handler ──────────────────────────────────────────────────
+
+def _execute_list_profiles_sync(msg: dict, log=print) -> dict:
+    cmd_id = msg.get("cmd_id")
+    try:
+        group_data = _client._get("/api/v1/group/list", page=1, page_size=200)
+        id_to_name = {str(g["group_id"]): g["group_name"] for g in group_data.get("list", [])}
+        raw = _client.list_profiles(group_id="")
+        profiles = [
+            {
+                "profile_id": p["user_id"],
+                "name": p.get("name", ""),
+                "group_name": id_to_name.get(str(p.get("group_id", "")), ""),
+            }
+            for p in raw
+        ]
+        return {"type": "list_profiles_result", "cmd_id": cmd_id, "ok": True, "profiles": profiles}
+    except Exception as exc:
+        return {"type": "list_profiles_result", "cmd_id": cmd_id, "ok": False, "error": str(exc)[:500]}
+
+
+async def _handle_list_profiles(msg: dict, outbox: asyncio.Queue, log=print):
+    result = await asyncio.to_thread(_execute_list_profiles_sync, msg, log)
+    await outbox.put(json.dumps(result))
+
+
+# ── WABA health scan handler ────────────────────────────────────────────────────
+
+_PROXY_ERROR_MARKERS = (
+    "ERR_PROXY_CONNECTION_FAILED", "ERR_TUNNEL_CONNECTION_FAILED",
+    "ERR_TIMED_OUT", "ERR_CONNECTION_TIMED_OUT", "ERR_PROXY_CERTIFICATE_INVALID",
+    "ERR_SOCKS_CONNECTION_FAILED",
+)
+
+
+def _execute_scan_profile_sync(msg: dict, log=print) -> dict:
+    """Open the AdsPower profile, scan every WABA it can reach for health
+    (approved/appealable/in_review/permanent/restricted), optionally appeal
+    appealable ones, and report profile-level checkpoint/not_logged_in/error."""
+    cmd_id      = msg.get("cmd_id")
+    profile_id  = msg.get("profile_id", "")
+    auto_appeal = bool(msg.get("auto_appeal"))
+
+    def _result(state: str, wabas=None, detail: str = "") -> dict:
+        return {
+            "type": "scan_result", "cmd_id": cmd_id, "ok": True,
+            "profile_id": profile_id, "state": state,
+            "wabas": wabas or [], "detail": detail,
+        }
+
+    if not profile_id:
+        return {"type": "scan_result", "cmd_id": cmd_id, "ok": False, "error": "profile_id ausente no comando"}
+
+    log(f"[SCAN {profile_id}] Iniciando scan")
+
+    try:
+        from services.adspower import connect_cdp_with_retry
+        from playwright.sync_api import sync_playwright
+        from services import facebook_scan
+    except Exception as exc:
+        return {"type": "scan_result", "cmd_id": cmd_id, "ok": False, "error": f"Falha ao importar dependências: {exc}"}
+
+    try:
+        browser_data = _client.open_browser(profile_id)
+        _open_pids.add(profile_id)
+    except Exception as exc:
+        return {"type": "scan_result", "cmd_id": cmd_id, "ok": False, "error": f"Falha ao abrir perfil AdsPower: {exc}"}
+
+    ws_endpoint = (browser_data.get("ws") or {}).get("puppeteer", "")
+    if not ws_endpoint:
+        try:
+            _client.close_browser(profile_id)
+        except Exception:
+            pass
+        return {"type": "scan_result", "cmd_id": cmd_id, "ok": False, "error": "Sem WebSocket endpoint do AdsPower"}
+
+    try:
+        with sync_playwright() as p:
+            browser, _ws = connect_cdp_with_retry(p, ws_endpoint, profile_id=profile_id, ads_client=_client)
+
+            def _fresh_page():
+                ctx = browser.contexts[0] if browser.contexts else browser.new_context()
+                for pg in list(ctx.pages):
+                    try:
+                        pg.close()
+                    except Exception:
+                        pass
+                return ctx.new_page()
+
+            page = _fresh_page()
+            target_url = "https://business.facebook.com/latest/settings/whatsapp_account"
+
+            try:
+                page.goto(target_url, wait_until="domcontentloaded", timeout=30_000)
+            except Exception as exc:
+                if not any(marker in str(exc) for marker in _PROXY_ERROR_MARKERS):
+                    raise
+                log(f"[SCAN {profile_id}] Erro de proxy detectado — removendo proxy e recarregando perfil")
+                try:
+                    _client.update_profile(profile_id, user_proxy_config={"proxy_soft": "no_proxy"})
+                except Exception as exc2:
+                    log(f"[SCAN {profile_id}] Falha ao remover proxy: {exc2}")
+                try:
+                    _client.close_browser(profile_id)
+                except Exception:
+                    pass
+                import time as _time
+                _time.sleep(2.0)
+                fresh = _client.open_browser(profile_id)
+                new_ws = (fresh.get("ws") or {}).get("puppeteer", "")
+                browser, _ws = connect_cdp_with_retry(p, new_ws, profile_id=profile_id, ads_client=_client)
+                page = _fresh_page()
+                page.goto(target_url, wait_until="domcontentloaded", timeout=30_000)
+
+            page.wait_for_timeout(1500)
+
+            if facebook_scan.is_checkpoint_url(page.url):
+                log(f"[SCAN {profile_id}] Checkpoint detectado")
+                return _result("checkpoint")
+
+            if facebook_scan.is_login_url(page.url) or not facebook_scan.is_logged_in(page, log=log):
+                log(f"[SCAN {profile_id}] Perfil não logado")
+                return _result("not_logged_in")
+
+            uid = facebook_scan.get_uid(page, log=log)
+            business_ids = facebook_scan.enumerate_business_ids(page, log=log)
+
+            if facebook_scan.is_checkpoint_url(page.url):
+                log(f"[SCAN {profile_id}] Checkpoint detectado ao enumerar BMs")
+                return _result("checkpoint")
+
+            wabas_out = []
+            for bm in business_ids:
+                business_id = bm["id"]
+                for w in facebook_scan.list_all_waba_assets(page, business_id, log=log):
+                    waba_id = w["id"]
+                    assessment = facebook_scan.assess_waba(page, business_id, waba_id, log=log)
+                    appeal_sent = False
+                    if auto_appeal and assessment["state"] == "appealable" and assessment.get("ban_strike_id"):
+                        appeal_sent = facebook_scan.appeal_waba(
+                            page, business_id, waba_id, uid, assessment["ban_strike_id"], log=log
+                        )
+                        if appeal_sent:
+                            assessment["state"] = "in_review"
+                    wabas_out.append({
+                        "waba_id": waba_id,
+                        "name": w.get("name", ""),
+                        "business_id": business_id,
+                        "state": assessment["state"],
+                        "appeal_sent": appeal_sent,
+                    })
+
+            log(f"[SCAN {profile_id}] Concluído — {len(wabas_out)} WABA(s)")
+            return _result("ok", wabas=wabas_out)
+
+    except Exception as exc:
+        import traceback as _tb
+        log(f"[SCAN {profile_id}] Exceção no browser: {exc}")
+        print(_tb.format_exc(), flush=True)
+        return {"type": "scan_result", "cmd_id": cmd_id, "ok": False, "error": str(exc)[:500]}
+    finally:
+        try:
+            _client.close_browser(profile_id)
+        except Exception:
+            pass
+        _open_pids.discard(profile_id)
+
+
+async def _handle_scan_profile(msg: dict, outbox: asyncio.Queue, log=print):
+    result = await asyncio.to_thread(_execute_scan_profile_sync, msg, log)
+    await outbox.put(json.dumps(result))
+
+
+# ── Manual single-WABA re-appeal handler ────────────────────────────────────────
+
+def _execute_appeal_waba_sync(msg: dict, log=print) -> dict:
+    cmd_id      = msg.get("cmd_id")
+    profile_id  = msg.get("profile_id", "")
+    business_id = msg.get("business_id", "")
+    waba_id     = msg.get("waba_id", "")
+
+    if not profile_id or not business_id or not waba_id:
+        return {"type": "appeal_result", "cmd_id": cmd_id, "ok": False,
+                "error": "profile_id/business_id/waba_id ausente"}
+
+    log(f"[APPEAL {profile_id}] Iniciando appeal manual waba={waba_id}")
+
+    try:
+        from services.adspower import connect_cdp_with_retry
+        from playwright.sync_api import sync_playwright
+        from services import facebook_scan
+    except Exception as exc:
+        return {"type": "appeal_result", "cmd_id": cmd_id, "ok": False, "error": f"Falha ao importar dependências: {exc}"}
+
+    try:
+        browser_data = _client.open_browser(profile_id)
+        _open_pids.add(profile_id)
+    except Exception as exc:
+        return {"type": "appeal_result", "cmd_id": cmd_id, "ok": False, "error": f"Falha ao abrir perfil AdsPower: {exc}"}
+
+    ws_endpoint = (browser_data.get("ws") or {}).get("puppeteer", "")
+    if not ws_endpoint:
+        try:
+            _client.close_browser(profile_id)
+        except Exception:
+            pass
+        return {"type": "appeal_result", "cmd_id": cmd_id, "ok": False, "error": "Sem WebSocket endpoint do AdsPower"}
+
+    try:
+        with sync_playwright() as p:
+            browser, _ws = connect_cdp_with_retry(p, ws_endpoint, profile_id=profile_id, ads_client=_client)
+            ctx = browser.contexts[0] if browser.contexts else browser.new_context()
+            for pg in list(ctx.pages):
+                try:
+                    pg.close()
+                except Exception:
+                    pass
+            page = ctx.new_page()
+            page.goto("https://business.facebook.com/latest/settings/whatsapp_account",
+                       wait_until="domcontentloaded", timeout=30_000)
+            page.wait_for_timeout(1500)
+
+            if facebook_scan.is_checkpoint_url(page.url):
+                return {"type": "appeal_result", "cmd_id": cmd_id, "ok": False, "error": "Perfil em checkpoint"}
+            if facebook_scan.is_login_url(page.url) or not facebook_scan.is_logged_in(page, log=log):
+                return {"type": "appeal_result", "cmd_id": cmd_id, "ok": False, "error": "Perfil não logado"}
+
+            uid = facebook_scan.get_uid(page, log=log)
+            assessment = facebook_scan.assess_waba(page, business_id, waba_id, log=log)
+            if assessment["state"] != "appealable" or not assessment.get("ban_strike_id"):
+                return {
+                    "type": "appeal_result", "cmd_id": cmd_id, "ok": False,
+                    "error": f"WABA não está em estado apelável (state={assessment['state']})",
+                }
+
+            sent = facebook_scan.appeal_waba(page, business_id, waba_id, uid, assessment["ban_strike_id"], log=log)
+            return {"type": "appeal_result", "cmd_id": cmd_id, "ok": True, "appeal_sent": sent}
+
+    except Exception as exc:
+        import traceback as _tb
+        log(f"[APPEAL {profile_id}] Exceção no browser: {exc}")
+        print(_tb.format_exc(), flush=True)
+        return {"type": "appeal_result", "cmd_id": cmd_id, "ok": False, "error": str(exc)[:500]}
+    finally:
+        try:
+            _client.close_browser(profile_id)
+        except Exception:
+            pass
+        _open_pids.discard(profile_id)
+
+
+async def _handle_appeal_waba(msg: dict, outbox: asyncio.Queue, log=print):
+    result = await asyncio.to_thread(_execute_appeal_waba_sync, msg, log)
+    await outbox.put(json.dumps(result))
+
+
 # ── Open-browser handler ───────────────────────────────────────────────────────
 
 async def _handle_open_browser(msg: dict, log=print):
@@ -356,6 +616,12 @@ async def _receiver(ws, outbox: asyncio.Queue, log=print):
             asyncio.create_task(_handle_open_browser(msg, log))
         elif t == "link_waba":
             asyncio.create_task(_handle_link_waba(msg, outbox, log))
+        elif t == "list_profiles":
+            asyncio.create_task(_handle_list_profiles(msg, outbox, log))
+        elif t == "scan_profile":
+            asyncio.create_task(_handle_scan_profile(msg, outbox, log))
+        elif t == "appeal_waba":
+            asyncio.create_task(_handle_appeal_waba(msg, outbox, log))
         # ping / unknown types are ignored — no action needed
 
 
