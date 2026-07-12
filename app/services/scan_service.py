@@ -34,9 +34,51 @@ def get_job(job_id: int) -> Optional[dict]:
     return _live_jobs.get(job_id)
 
 
-def _run_job(app, job_id: int, user_id: int, auto_appeal: bool, rescan: bool):
+def has_active_job(user_id: int) -> bool:
+    with _jobs_lock:
+        return any(
+            s.get("user_id") == user_id and s.get("status") in ("queued", "running")
+            for s in _live_jobs.values()
+        )
+
+
+def clear_scan_history(user_id: int) -> dict:
+    """Archive then wipe every ScanProfile/ScanWaba row for a user.
+
+    Archiving first keeps a server-side recovery path even though the UI
+    tells the user this is irreversible (there's no in-app restore flow).
+    """
     from .. import db
     from ..models import ScanProfile, ScanWaba, ScanProfileArchive, ScanWabaArchive
+
+    batch_at = datetime.utcnow()
+    profiles = ScanProfile.query.filter_by(user_id=user_id).all()
+    wabas = ScanWaba.query.filter_by(user_id=user_id).all()
+
+    for p in profiles:
+        db.session.add(ScanProfileArchive(
+            user_id=user_id, batch_at=batch_at, profile_id=p.profile_id,
+            profile_name=p.profile_name, outcome=p.outcome, detail=p.detail,
+            scanned_at=p.scanned_at,
+        ))
+    for w in wabas:
+        db.session.add(ScanWabaArchive(
+            user_id=user_id, batch_at=batch_at, waba_id=w.waba_id,
+            waba_name=w.waba_name, business_id=w.business_id,
+            profile_id=w.profile_id, profile_name=w.profile_name,
+            state=w.state, appeal_sent=w.appeal_sent, scanned_at=w.scanned_at,
+        ))
+
+    profile_count = ScanProfile.query.filter_by(user_id=user_id).delete()
+    waba_count = ScanWaba.query.filter_by(user_id=user_id).delete()
+    db.session.commit()
+
+    return {"profiles": profile_count, "wabas": waba_count}
+
+
+def _run_job(app, job_id: int, user_id: int, auto_appeal: bool, rescan: bool):
+    from .. import db
+    from ..models import ScanProfile, ScanWaba
     from ..routes.agent_ws import send_command_and_wait
 
     state = _live_jobs[job_id]
@@ -44,25 +86,10 @@ def _run_job(app, job_id: int, user_id: int, auto_appeal: bool, rescan: bool):
 
     with app.app_context():
         if rescan:
-            # Archive the current rows before wiping them — "rescan all"
-            # should never destroy data the operator can't get back.
-            batch_at = datetime.utcnow()
-            for p in ScanProfile.query.filter_by(user_id=user_id).all():
-                db.session.add(ScanProfileArchive(
-                    user_id=user_id, batch_at=batch_at, profile_id=p.profile_id,
-                    profile_name=p.profile_name, outcome=p.outcome, detail=p.detail,
-                    scanned_at=p.scanned_at,
-                ))
-            for w in ScanWaba.query.filter_by(user_id=user_id).all():
-                db.session.add(ScanWabaArchive(
-                    user_id=user_id, batch_at=batch_at, waba_id=w.waba_id,
-                    waba_name=w.waba_name, business_id=w.business_id,
-                    profile_id=w.profile_id, profile_name=w.profile_name,
-                    state=w.state, appeal_sent=w.appeal_sent, scanned_at=w.scanned_at,
-                ))
-            ScanProfile.query.filter_by(user_id=user_id).delete()
-            ScanWaba.query.filter_by(user_id=user_id).delete()
-            db.session.commit()
+            # "Rescan all" should never destroy data the operator can't get
+            # back — archive-then-wipe via the same helper the self-service
+            # "clear history" button uses.
+            clear_scan_history(user_id)
 
         listing = send_command_and_wait(user_id, {"type": "list_profiles"}, timeout=60.0)
         if not listing.get("ok"):
@@ -158,6 +185,7 @@ def start_scan_job(user_id: int, auto_appeal: bool = True, rescan: bool = False)
     job_id = _next_job_id()
     state = {
         "job_id": job_id,
+        "user_id": user_id,
         "status": "queued",
         "total": 0,
         "done": 0,

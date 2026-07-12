@@ -24,6 +24,10 @@
             class="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sm font-semibold">
       Reescanear tudo
     </button>
+    <button onclick="openClearHistoryModal()" id="btnClearHistory"
+            class="px-4 py-2 rounded-xl bg-red-950/40 hover:bg-red-900/50 border border-red-800/50 text-sm font-semibold text-red-300">
+      Limpar histórico
+    </button>
   </div>
 </div>
 
@@ -63,6 +67,43 @@
     </thead>
     <tbody id="rowsBody" class="divide-y divide-zinc-800/60"></tbody>
   </table>
+</div>
+
+<!-- ── Clear history modal ───────────────────────────────────────────────── -->
+<div id="clearHistoryModalBg" class="fixed inset-0 bg-black/60 hidden items-center justify-center p-4 z-50">
+  <div class="w-full max-w-lg rounded-2xl border border-zinc-800 bg-zinc-950 p-5">
+    <div class="flex items-center gap-3 mb-4">
+      <div class="w-9 h-9 rounded-xl bg-red-950/50 border border-red-800/50 flex items-center justify-center shrink-0">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-red-400" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6"></polyline>
+          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+          <path d="M10 11v6"></path><path d="M14 11v6"></path>
+          <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+        </svg>
+      </div>
+      <div>
+        <div class="text-base font-semibold">Limpar histórico do Scanner</div>
+        <div class="text-xs text-zinc-500">Esta ação não pode ser desfeita.</div>
+      </div>
+    </div>
+
+    <div class="mb-4 text-sm text-zinc-400">
+      Isso apaga os dados dos perfis e WABAs já escaneados nesta conta. Você precisará escanear
+      novamente para ver os resultados.
+    </div>
+
+    <div class="flex items-center justify-end gap-3">
+      <button onclick="closeClearHistoryModal()"
+              class="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sm">
+        Cancelar
+      </button>
+      <button id="btnConfirmClearHistory" onclick="confirmClearHistory()"
+              class="px-5 py-2 rounded-xl bg-red-700 hover:bg-red-600 text-sm font-semibold">
+        Sim, limpar histórico
+      </button>
+    </div>
+  </div>
 </div>
 
 <!-- ── Toast ──────────────────────────────────────────────────────────────── -->
@@ -297,6 +338,40 @@ async function pollJob() {
     localStorage.removeItem("scannerJobId");
     if (d.status === "error") showToast(d.error || "Erro no scan.", false);
     else showToast(d.status === "stopped" ? "Scan interrompido." : "Scan concluído.", true);
+  }
+}
+
+function openClearHistoryModal() {
+  const bg = document.getElementById("clearHistoryModalBg");
+  bg.classList.remove("hidden");
+  bg.classList.add("flex");
+}
+
+function closeClearHistoryModal() {
+  const bg = document.getElementById("clearHistoryModalBg");
+  bg.classList.add("hidden");
+  bg.classList.remove("flex");
+}
+
+document.getElementById("clearHistoryModalBg")?.addEventListener("click", (e) => {
+  if (e.target.id === "clearHistoryModalBg") closeClearHistoryModal();
+});
+
+async function confirmClearHistory() {
+  const btn = document.getElementById("btnConfirmClearHistory");
+  btn.disabled = true;
+  try {
+    const r = await fetch("{{ url_for('scanner.clear_history') }}", { method: "POST" });
+    const d = await r.json();
+    closeClearHistoryModal();
+    if (!d.ok) {
+      showToast(d.error || "Erro ao limpar histórico.", false);
+      return;
+    }
+    showToast("Histórico limpo.", true);
+    await fetchRows();
+  } finally {
+    btn.disabled = false;
   }
 }
 

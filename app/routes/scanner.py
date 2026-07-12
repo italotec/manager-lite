@@ -58,6 +58,15 @@ def job_stop(job_id):
     return jsonify({"ok": True, "found": found})
 
 
+@bp.route("/clear-history", methods=["POST"])
+@login_required
+def clear_history():
+    if scan_service.has_active_job(current_user.id):
+        return jsonify({"ok": False, "error": "Pare o scan atual antes de limpar o histórico."}), 400
+    counts = scan_service.clear_scan_history(current_user.id)
+    return jsonify({"ok": True, **counts})
+
+
 @bp.route("/open/<profile_id>", methods=["POST"])
 @login_required
 def open_adspower(profile_id):
