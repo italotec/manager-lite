@@ -9,6 +9,7 @@ cmd_id and are handled by dedicated handlers instead of the reply-queue path.
 import json
 import queue
 import threading
+import time
 import uuid
 from datetime import datetime
 from dataclasses import dataclass, field
@@ -45,11 +46,17 @@ _pending: dict[str, queue.Queue] = {}
 _pending_lock = threading.Lock()
 
 
-def send_command_and_wait(user_id: int, msg: dict, timeout: float = 120.0) -> dict:
+def send_command_and_wait(
+    user_id: int, msg: dict, timeout: float = 120.0, stop_event: threading.Event = None
+) -> dict:
     """Push a command to the agent and block until it replies (or times out).
 
     The caller must set msg["type"]; this function injects a unique cmd_id and
     registers a reply queue before sending so no race with the receive loop.
+
+    If stop_event is given, the wait is polled in short slices so a caller
+    (e.g. the scan job loop) can be interrupted well before the full timeout
+    elapses instead of being stuck for it — see scan_service.request_stop.
     """
     if not is_agent_connected(user_id):
         return {"ok": False, "error": "agente não conectado"}
@@ -64,11 +71,24 @@ def send_command_and_wait(user_id: int, msg: dict, timeout: float = 120.0) -> di
     try:
         if not push_to_agent(user_id, msg):
             return {"ok": False, "error": "agente desconectou antes do envio"}
-        try:
-            result = reply_q.get(timeout=timeout)
-        except queue.Empty:
-            return {"ok": False, "error": "timeout — agente não respondeu"}
-        return result
+        if stop_event is None:
+            try:
+                return reply_q.get(timeout=timeout)
+            except queue.Empty:
+                return {"ok": False, "error": "timeout — agente não respondeu"}
+
+        deadline = time.monotonic() + timeout
+        slice_s = 0.5
+        while True:
+            if stop_event.is_set():
+                return {"ok": False, "stopped": True}
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return {"ok": False, "error": "timeout — agente não respondeu"}
+            try:
+                return reply_q.get(timeout=min(slice_s, remaining))
+            except queue.Empty:
+                continue
     finally:
         with _pending_lock:
             _pending.pop(cmd_id, None)

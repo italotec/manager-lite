@@ -47,14 +47,15 @@ def job_status(job_id):
     state = scan_service.get_job(job_id)
     if not state:
         return jsonify({"ok": False, "error": "Job não encontrado."}), 404
-    return jsonify({"ok": True, **state})
+    public_state = {k: v for k, v in state.items() if k != "stop_event"}
+    return jsonify({"ok": True, **public_state})
 
 
 @bp.route("/job/<int:job_id>/stop", methods=["POST"])
 @login_required
 def job_stop(job_id):
-    scan_service.request_stop(job_id)
-    return jsonify({"ok": True})
+    found = scan_service.request_stop(job_id)
+    return jsonify({"ok": True, "found": found})
 
 
 @bp.route("/open/<profile_id>", methods=["POST"])

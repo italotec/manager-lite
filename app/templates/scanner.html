@@ -237,12 +237,34 @@ async function startScan(rescan) {
 }
 
 async function stopScan() {
-  if (!_jobId) return;
-  await fetch(`/scanner/job/${_jobId}/stop`, { method: "POST" });
+  if (!_jobId) {
+    showToast("Nenhum scan em andamento.", false);
+    return;
+  }
+  const btn = document.getElementById("btnStop");
+  btn.disabled = true;
+  btn.textContent = "Parando…";
+  try {
+    const r = await fetch(`/scanner/job/${_jobId}/stop`, { method: "POST" });
+    const d = await r.json();
+    if (!d.found) {
+      showToast("Scan já finalizado.", false);
+      clearInterval(_pollInterval);
+      btn.classList.add("hidden");
+      localStorage.removeItem("scannerJobId");
+      return;
+    }
+    showToast("Parando o scan…", true);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 function startPolling() {
-  document.getElementById("btnStop").classList.remove("hidden");
+  const btn = document.getElementById("btnStop");
+  btn.classList.remove("hidden");
+  btn.disabled = false;
+  btn.textContent = "Parar";
   document.getElementById("progressBar").classList.remove("hidden");
   if (_pollInterval) clearInterval(_pollInterval);
   pollJob();
@@ -268,7 +290,10 @@ async function pollJob() {
 
   if (d.status === "done" || d.status === "stopped" || d.status === "error") {
     clearInterval(_pollInterval);
-    document.getElementById("btnStop").classList.add("hidden");
+    const btn = document.getElementById("btnStop");
+    btn.classList.add("hidden");
+    btn.disabled = false;
+    btn.textContent = "Parar";
     localStorage.removeItem("scannerJobId");
     if (d.status === "error") showToast(d.error || "Erro no scan.", false);
     else showToast(d.status === "stopped" ? "Scan interrompido." : "Scan concluído.", true);

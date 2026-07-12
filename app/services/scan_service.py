@@ -92,7 +92,13 @@ def _run_job(app, job_id: int, user_id: int, auto_appeal: bool, rescan: bool):
                 user_id,
                 {"type": "scan_profile", "profile_id": profile_id, "auto_appeal": auto_appeal},
                 timeout=180.0,
+                stop_event=state["stop_event"],
             )
+
+            if res.get("stopped"):
+                # Interrupted mid-wait by request_stop — don't record a fake
+                # result for a profile the agent may still be processing.
+                break
 
             if not res.get("ok"):
                 outcome = "error"
@@ -159,6 +165,7 @@ def start_scan_job(user_id: int, auto_appeal: bool = True, rescan: bool = False)
         "failed": 0,
         "results": [],
         "stop_requested": False,
+        "stop_event": threading.Event(),
     }
     with _jobs_lock:
         _live_jobs[job_id] = state
@@ -173,7 +180,12 @@ def start_scan_job(user_id: int, auto_appeal: bool = True, rescan: bool = False)
     return job_id
 
 
-def request_stop(job_id: int):
+def request_stop(job_id: int) -> bool:
+    """Signal the job to stop. Returns whether a live job was found."""
     with _jobs_lock:
-        if job_id in _live_jobs:
-            _live_jobs[job_id]["stop_requested"] = True
+        state = _live_jobs.get(job_id)
+        if not state:
+            return False
+        state["stop_requested"] = True
+        state["stop_event"].set()
+        return True
