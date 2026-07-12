@@ -35,10 +35,19 @@
   </div>
 </div>
 
+<!-- ── Status filters ─────────────────────────────────────────────────────── -->
+<div id="filterBar" class="flex items-center gap-2 flex-wrap mb-4 hidden"></div>
+
 <div id="emptyState" class="text-center py-20 text-zinc-500 hidden">
   <div class="text-5xl mb-3">📡</div>
   <div class="text-base font-medium">Nenhuma WABA escaneada ainda</div>
   <div class="text-sm mt-1">Clique em "Escanear" para abrir os perfis do AdsPower e verificar as WABAs.</div>
+</div>
+
+<div id="noMatchState" class="text-center py-20 text-zinc-500 hidden">
+  <div class="text-5xl mb-3">🔍</div>
+  <div class="text-base font-medium">Nenhuma WABA neste filtro</div>
+  <div class="text-sm mt-1">Selecione outro status acima.</div>
 </div>
 
 <div id="tableWrap" class="overflow-x-auto rounded-2xl border border-zinc-800 hidden">
@@ -75,6 +84,49 @@ const STATE_BADGES = {
   error:         ['Erro',                'bg-zinc-800 text-zinc-400 border-zinc-700'],
 };
 
+// Each filter: key, label, and a predicate over a row. "Apeladas" keys off the
+// appeal_sent flag (crosses states), the rest match on state.
+const FILTERS = [
+  { key: 'all',        label: 'Todas',       match: () => true },
+  { key: 'approved',   label: 'Aprovadas',   match: r => r.state === 'approved' },
+  { key: 'appealable', label: 'Apeláveis',   match: r => r.state === 'appealable' },
+  { key: 'appealed',   label: 'Apeladas',    match: r => !!r.appeal_sent },
+  { key: 'in_review',  label: 'Em análise',  match: r => r.state === 'in_review' },
+  { key: 'permanent',  label: 'Permanentes', match: r => r.state === 'permanent' },
+  { key: 'restricted', label: 'Restritas',   match: r => r.state === 'restricted' },
+  { key: 'error',      label: 'Erro',        match: r => r.state === 'error' },
+];
+let _filter = localStorage.getItem("scannerFilter") || "all";
+
+function currentMatch() {
+  return (FILTERS.find(f => f.key === _filter) || FILTERS[0]).match;
+}
+
+function setFilter(key) {
+  _filter = key;
+  localStorage.setItem("scannerFilter", key);
+  renderFilters();
+  renderRows();
+}
+
+function renderFilters() {
+  const bar = document.getElementById("filterBar");
+  if (!_rows.length) { bar.classList.add("hidden"); return; }
+  bar.classList.remove("hidden");
+  bar.innerHTML = FILTERS.map(f => {
+    const count = _rows.filter(f.match).length;
+    const active = f.key === _filter;
+    const cls = active
+      ? "bg-teal-700 text-white border-teal-600"
+      : "bg-zinc-900 text-zinc-400 border-zinc-800 hover:bg-zinc-800";
+    return `<button onclick="setFilter('${f.key}')"
+              class="px-3 py-1.5 rounded-lg border text-xs font-medium ${cls}">
+              ${f.label}
+              <span class="ml-1 opacity-70">${count}</span>
+            </button>`;
+  }).join("");
+}
+
 function statusBadge(row) {
   const [label, cls] = STATE_BADGES[row.state] || [row.state || '—', 'bg-zinc-800 text-zinc-400 border-zinc-700'];
   let html = `<span class="text-xs px-2 py-0.5 rounded-full border ${cls}">${label}</span>`;
@@ -93,17 +145,29 @@ function escapeHtml(s) {
 function renderRows() {
   const body = document.getElementById("rowsBody");
   const empty = document.getElementById("emptyState");
+  const noMatch = document.getElementById("noMatchState");
   const wrap = document.getElementById("tableWrap");
+
+  renderFilters();
 
   if (!_rows.length) {
     empty.classList.remove("hidden");
+    noMatch.classList.add("hidden");
     wrap.classList.add("hidden");
     return;
   }
   empty.classList.add("hidden");
+
+  const rows = _rows.filter(currentMatch());
+  if (!rows.length) {
+    noMatch.classList.remove("hidden");
+    wrap.classList.add("hidden");
+    return;
+  }
+  noMatch.classList.add("hidden");
   wrap.classList.remove("hidden");
 
-  body.innerHTML = _rows.map(row => `
+  body.innerHTML = rows.map(row => `
     <tr class="hover:bg-zinc-900/40 transition-colors">
       <td class="py-3 px-3">
         <button title="Abrir no AdsPower" onclick="openProfile('${row.profile_id}')"
