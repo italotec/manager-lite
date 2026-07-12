@@ -36,7 +36,7 @@ def get_job(job_id: int) -> Optional[dict]:
 
 def _run_job(app, job_id: int, user_id: int, auto_appeal: bool, rescan: bool):
     from .. import db
-    from ..models import ScanProfile, ScanWaba
+    from ..models import ScanProfile, ScanWaba, ScanProfileArchive, ScanWabaArchive
     from ..routes.agent_ws import send_command_and_wait
 
     state = _live_jobs[job_id]
@@ -44,6 +44,22 @@ def _run_job(app, job_id: int, user_id: int, auto_appeal: bool, rescan: bool):
 
     with app.app_context():
         if rescan:
+            # Archive the current rows before wiping them — "rescan all"
+            # should never destroy data the operator can't get back.
+            batch_at = datetime.utcnow()
+            for p in ScanProfile.query.filter_by(user_id=user_id).all():
+                db.session.add(ScanProfileArchive(
+                    user_id=user_id, batch_at=batch_at, profile_id=p.profile_id,
+                    profile_name=p.profile_name, outcome=p.outcome, detail=p.detail,
+                    scanned_at=p.scanned_at,
+                ))
+            for w in ScanWaba.query.filter_by(user_id=user_id).all():
+                db.session.add(ScanWabaArchive(
+                    user_id=user_id, batch_at=batch_at, waba_id=w.waba_id,
+                    waba_name=w.waba_name, business_id=w.business_id,
+                    profile_id=w.profile_id, profile_name=w.profile_name,
+                    state=w.state, appeal_sent=w.appeal_sent, scanned_at=w.scanned_at,
+                ))
             ScanProfile.query.filter_by(user_id=user_id).delete()
             ScanWaba.query.filter_by(user_id=user_id).delete()
             db.session.commit()

@@ -186,8 +186,18 @@ def list_all_waba_assets(page, business_id: str, log=print) -> list[dict]:
         is_waba = (o.get("assetType") == "WHATSAPP_BUSINESS_ACCOUNT" or
                    o.get("business_asset_type") == "WHATSAPP_BUSINESS_ACCOUNT")
         wid = o.get("assetID") or o.get("business_object_id") or o.get("id")
-        if is_waba and wid and str(wid) not in seen:
-            seen[str(wid)] = o.get("business_object_name") or o.get("wabaName") or ""
+        name = o.get("business_object_name") or o.get("wabaName") or ""
+        if is_waba and wid:
+            wid = str(wid)
+            # The asset shows up in multiple shapes in this response (a bare
+            # "node" with no name, plus a richer nested "business_object"
+            # with the actual name) — keep the first non-empty name seen
+            # instead of locking in an empty one from whichever shape walk()
+            # reaches first.
+            if name and not seen.get(wid):
+                seen[wid] = name
+            else:
+                seen.setdefault(wid, "")
         for v in o.values():
             walk(v)
 
@@ -219,6 +229,7 @@ def assess_waba(page, business_id: str, waba_id: str, log=print) -> dict:
         return {"state": "error", "detail": result.get("err") or "graphql error"}
 
     w = (result.get("data") or {}).get("whatsAppAccountData") or {}
+    name = w.get("name") or ""
     review_status = w.get("account_review_status")
     violations = w.get("integrity_violations") or []
     end_client = w.get("end_client_business_for_graphql") or {}
@@ -242,6 +253,7 @@ def assess_waba(page, business_id: str, waba_id: str, log=print) -> dict:
 
     return {
         "state": state,
+        "name": name,
         "account_review_status": review_status,
         "appeal_status": appeal_status,
         "ban_strike_id": ban_strike_id,

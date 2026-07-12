@@ -387,13 +387,19 @@ def _execute_scan_profile_sync(msg: dict, log=print) -> dict:
             browser, _ws = connect_cdp_with_retry(p, ws_endpoint, profile_id=profile_id, ads_client=_client)
 
             def _fresh_page():
+                # Open the new page BEFORE closing the old ones — closing every
+                # tab in a context first can close the window itself (last-tab
+                # behavior), which then makes new_page() fail with
+                # "Target.createTarget: Failed to open a new tab".
                 ctx = browser.contexts[0] if browser.contexts else browser.new_context()
-                for pg in list(ctx.pages):
+                old_pages = list(ctx.pages)
+                new_page = ctx.new_page()
+                for pg in old_pages:
                     try:
                         pg.close()
                     except Exception:
                         pass
-                return ctx.new_page()
+                return new_page
 
             page = _fresh_page()
             target_url = "https://business.facebook.com/latest/settings/whatsapp_account"
@@ -452,7 +458,7 @@ def _execute_scan_profile_sync(msg: dict, log=print) -> dict:
                             assessment["state"] = "in_review"
                     wabas_out.append({
                         "waba_id": waba_id,
-                        "name": w.get("name", ""),
+                        "name": w.get("name") or assessment.get("name") or "",
                         "business_id": business_id,
                         "state": assessment["state"],
                         "appeal_sent": appeal_sent,
@@ -518,12 +524,13 @@ def _execute_appeal_waba_sync(msg: dict, log=print) -> dict:
         with sync_playwright() as p:
             browser, _ws = connect_cdp_with_retry(p, ws_endpoint, profile_id=profile_id, ads_client=_client)
             ctx = browser.contexts[0] if browser.contexts else browser.new_context()
-            for pg in list(ctx.pages):
+            old_pages = list(ctx.pages)
+            page = ctx.new_page()
+            for pg in old_pages:
                 try:
                     pg.close()
                 except Exception:
                     pass
-            page = ctx.new_page()
             page.goto("https://business.facebook.com/latest/settings/whatsapp_account",
                        wait_until="domcontentloaded", timeout=30_000)
             page.wait_for_timeout(1500)

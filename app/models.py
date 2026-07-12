@@ -257,6 +257,39 @@ class ScanWaba(db.Model):
         }
 
 
+class ScanProfileArchive(db.Model):
+    """Snapshot of a ScanProfile row taken right before a "rescan all" wipes it.
+
+    ScanProfile.profile_id is a primary key that gets reused on every scan, so
+    a soft-delete flag on that same row can't preserve history across more
+    than one rescan — rows are copied here first instead, grouped by batch_at
+    so each rescan's snapshot stays distinguishable.
+    """
+    id           = db.Column(db.Integer, primary_key=True)
+    user_id      = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    batch_at     = db.Column(db.DateTime, nullable=False, index=True)
+    profile_id   = db.Column(db.String(64), nullable=False)
+    profile_name = db.Column(db.String(255), default="", nullable=False)
+    outcome      = db.Column(db.String(32), default="", nullable=False)
+    detail       = db.Column(db.Text, default="", nullable=False)
+    scanned_at   = db.Column(db.DateTime)
+
+
+class ScanWabaArchive(db.Model):
+    """Snapshot of a ScanWaba row taken right before a "rescan all" wipes it."""
+    id           = db.Column(db.Integer, primary_key=True)
+    user_id      = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    batch_at     = db.Column(db.DateTime, nullable=False, index=True)
+    waba_id      = db.Column(db.String(64), nullable=False)
+    waba_name    = db.Column(db.String(255), default="", nullable=False)
+    business_id  = db.Column(db.String(64), default="", nullable=False)
+    profile_id   = db.Column(db.String(64), nullable=False)
+    profile_name = db.Column(db.String(255), default="", nullable=False)
+    state        = db.Column(db.String(32), default="", nullable=False)
+    appeal_sent  = db.Column(db.Boolean, default=False, nullable=False)
+    scanned_at   = db.Column(db.DateTime)
+
+
 class PhotoModel(db.Model):
     """Saved profile picture — reusable across WABAs."""
     id         = db.Column(db.Integer, primary_key=True)
