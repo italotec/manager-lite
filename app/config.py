@@ -27,6 +27,9 @@ class Config:
     SESSION_COOKIE_SECURE = False
     REMEMBER_COOKIE_SECURE = False
 
+    # Verify token for the WhatsApp Cloud API webhook handshake (GET /webhook).
+    WEBHOOK_VERIFY_TOKEN = os.getenv("WEBHOOK_VERIFY_TOKEN", "my-webhook-verify-token-change-me")
+
     # META
     META_API_VERSION = os.getenv("META_API_VERSION", "v18.0")
     META_UPLOAD_API_VERSION = os.getenv("META_UPLOAD_API_VERSION", "v21.0")

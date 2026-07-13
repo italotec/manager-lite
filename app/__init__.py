@@ -33,6 +33,8 @@ def create_app():
     from .routes.verificar import bp as verificar_bp
     from .routes.scanner import bp as scanner_bp
     from .routes.agent_ws import bp as agent_ws_bp, handle_ws as agent_handle_ws
+    from .routes.waba_detail import bp as waba_detail_bp
+    from .routes.webhook import bp as webhook_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(wabas_bp)
@@ -49,6 +51,8 @@ def create_app():
     app.register_blueprint(verificar_bp)
     app.register_blueprint(scanner_bp)
     app.register_blueprint(agent_ws_bp)
+    app.register_blueprint(waba_detail_bp)
+    app.register_blueprint(webhook_bp)
 
     sock.route("/agent/ws")(agent_handle_ws)
 
@@ -66,6 +70,11 @@ def create_app():
 
         # Enable WAL mode — allows concurrent reads while writing
         db.session.execute(db.text("PRAGMA journal_mode=WAL"))
+        db.session.commit()
+
+        db.session.execute(db.text(
+            "CREATE INDEX IF NOT EXISTS ix_chat_message_timestamp ON chat_message (timestamp)"
+        ))
         db.session.commit()
 
         # Add new columns to existing DBs (create_all won't add new columns)
