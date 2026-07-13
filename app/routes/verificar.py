@@ -11,7 +11,7 @@ from flask import Blueprint, render_template, request, jsonify
 from flask_login import login_required, current_user
 
 from .. import db
-from ..models import VerificarProfile
+from ..models import VerificarProfile, PartnerCredential, get_bsp_names
 from .agent_ws import is_agent_connected, push_to_agent
 from ..config import Config
 
@@ -49,6 +49,14 @@ def link():
 
     manager_base_url = Config.MANAGER_BASE_URL or request.host_url.rstrip("/")
 
+    # All partners this user already has a token for — the main one (default
+    # share target) plus every secondary (match-only) — so the agent can
+    # recognize a WABA already shared to any of them and skip re-sharing.
+    known_partners = [{"business_id": partner_business_id, "token": meta_token}]
+    for p in PartnerCredential.query.filter_by(user_id=current_user.id).all():
+        known_partners.append({"business_id": p.business_id, "token": p.token})
+    bsp_names = get_bsp_names()
+
     enqueued = 0
     skipped = 0
     for pid in profile_ids:
@@ -70,6 +78,8 @@ def link():
             "waba_name": profile.waba_name or "",
             "partner_business_id": partner_business_id,
             "meta_token": meta_token,
+            "known_partners": known_partners,
+            "bsp_names": bsp_names,
             "manager_api_key": current_user.api_key,
             "manager_base_url": manager_base_url,
         })

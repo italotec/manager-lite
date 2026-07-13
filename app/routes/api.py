@@ -7,6 +7,38 @@ from ..config import Config
 bp = Blueprint("api", __name__, url_prefix="/api/v1")
 
 
+def register_waba_for_user(
+    user, waba_id: str, token: str, *,
+    adspower_profile_id: str = "", business_manager_id: str = "",
+    payment_account_id: str = "", serial_number: str = "",
+) -> dict:
+    """Persist a WABA for *user* and subscribe its webhook. Shared by the
+    /api/v1/business-managers endpoint (agent callback) and the Minha Conta
+    "pending partner" auto-complete sweep (server-side, no agent involved).
+
+    Returns the same shape POSTed back to /api/v1/business-managers callers.
+    """
+    ensure_user_bms_file(user.id)
+    upsert_waba(user.id, waba_id=waba_id, token=token,
+                adspower_profile_id=adspower_profile_id,
+                business_manager_id=business_manager_id,
+                payment_account_id=payment_account_id,
+                serial_number=serial_number)
+
+    webhook_ok, webhook_err = subscribe_waba_webhook(Config.META_API_VERSION, token, waba_id)
+
+    return {
+        "ok": True,
+        "waba_id": waba_id,
+        "adspower_profile_id": adspower_profile_id or None,
+        "business_manager_id": business_manager_id or None,
+        "payment_account_id": payment_account_id or None,
+        "serial_number": serial_number or None,
+        "webhook_subscribed": webhook_ok,
+        "webhook_error": webhook_err,
+    }
+
+
 def _authenticate():
     """Extract and validate the API key from request headers.
 
@@ -60,22 +92,11 @@ def add_business_manager():
     if not token:
         return jsonify({"ok": False, "error": "token is required."}), 400
 
-    ensure_user_bms_file(user.id)
-    upsert_waba(user.id, waba_id=waba_id, token=token,
-                adspower_profile_id=adspower_profile_id,
-                business_manager_id=business_manager_id,
-                payment_account_id=payment_account_id,
-                serial_number=serial_number)
-
-    webhook_ok, webhook_err = subscribe_waba_webhook(Config.META_API_VERSION, token, waba_id)
-
-    return jsonify({
-        "ok": True,
-        "waba_id": waba_id,
-        "adspower_profile_id": adspower_profile_id or None,
-        "business_manager_id": business_manager_id or None,
-        "payment_account_id": payment_account_id or None,
-        "serial_number": serial_number or None,
-        "webhook_subscribed": webhook_ok,
-        "webhook_error": webhook_err,
-    }), 201
+    result = register_waba_for_user(
+        user, waba_id, token,
+        adspower_profile_id=adspower_profile_id,
+        business_manager_id=business_manager_id,
+        payment_account_id=payment_account_id,
+        serial_number=serial_number,
+    )
+    return jsonify(result), 201

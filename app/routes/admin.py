@@ -6,7 +6,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import current_user
 
 from .. import db
-from ..models import User, LoginLog, DisparoJob, TemplateModel
+from ..models import User, LoginLog, DisparoJob, TemplateModel, BspPartner, DEFAULT_BSP_NAMES
 from ..json_store import ensure_user_bms_file, load_user_bms, user_dir
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -160,3 +160,39 @@ def admin_delete_user(user_id: int):
 
     flash(f"Usuário '{username}' excluído.", "ok")
     return redirect(url_for("admin.admin_users"))
+
+
+@bp.route("/bsp")
+def admin_bsp():
+    extra = BspPartner.query.order_by(BspPartner.name).all()
+    return render_template("admin_bsp.html", defaults=DEFAULT_BSP_NAMES, extra=extra)
+
+
+@bp.route("/bsp/create", methods=["POST"])
+def admin_bsp_create():
+    name = (request.form.get("name") or "").strip()
+    if not name:
+        flash("Informe o nome do parceiro BSP.", "error")
+        return redirect(url_for("admin.admin_bsp"))
+
+    already = {n.lower() for n in DEFAULT_BSP_NAMES} | {
+        b.name.lower() for b in BspPartner.query.all()
+    }
+    if name.lower() in already:
+        flash(f"'{name}' já está na lista.", "error")
+        return redirect(url_for("admin.admin_bsp"))
+
+    db.session.add(BspPartner(name=name))
+    db.session.commit()
+    flash(f"'{name}' adicionado à lista de BSPs ignorados.", "ok")
+    return redirect(url_for("admin.admin_bsp"))
+
+
+@bp.route("/bsp/<int:bsp_id>/delete", methods=["POST"])
+def admin_bsp_delete(bsp_id: int):
+    b = BspPartner.query.get_or_404(bsp_id)
+    name = b.name
+    db.session.delete(b)
+    db.session.commit()
+    flash(f"'{name}' removido da lista de BSPs ignorados.", "ok")
+    return redirect(url_for("admin.admin_bsp"))

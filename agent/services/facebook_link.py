@@ -280,6 +280,79 @@ def share_waba_graphql(page, business_id: str, partner_business_id: str, waba_id
         return False
 
 
+def detect_waba_partner(page, business_id: str, waba_id: str, bsp_names: list[str] | None = None, log=print) -> list[dict]:
+    """Live-scan the BM's Partners tab for non-BSP partner(s) already holding
+    *waba_id*. Returns [{"business_id": str, "name": str}, ...] (possibly more
+    than one — the same WABA can be shared with several partners at once).
+
+    Pure DOM/URL based, no GraphQL doc_id needed — the Partners grid renders
+    each row's accessible name as the literal business name (a proper noun,
+    locale-independent unlike the surrounding UI chrome). Selecting a row
+    exposes its numeric id via `selected_partner_id=` in the URL and its
+    assigned WhatsApp asset(s) via `a[href*="selected_asset_type=whatsapp-
+    business-account"]` links carrying `selected_asset_id=` — both URL slugs,
+    also locale-independent. Confirmed live against a BM with two partners
+    (a real partner + the BSP "Callbell") both holding the same WABA.
+    """
+    partners_url = f"https://business.facebook.com/latest/settings/partners?business_id={business_id}"
+    try:
+        page.goto(partners_url, wait_until="domcontentloaded", timeout=30_000)
+        page.wait_for_timeout(2000)
+    except Exception as exc:
+        log(f"[WABA_LINK] detect_waba_partner navigate failed: {exc}")
+        return []
+
+    bsp_lower = [b.strip().lower() for b in (bsp_names or []) if b and b.strip()]
+
+    try:
+        names = page.evaluate(
+            """() => Array.from(document.querySelectorAll('[role="row"][data-index]'))
+                .map(r => { const c = r.querySelector('[role="gridcell"]'); return c ? c.innerText.trim() : ""; })
+                .filter(Boolean)"""
+        ) or []
+    except Exception as exc:
+        log(f"[WABA_LINK] detect_waba_partner row scan failed for bm={business_id}: {exc}")
+        return []
+
+    matches: list[dict] = []
+    for idx, name in enumerate(names):
+        if any(bsp in name.lower() for bsp in bsp_lower):
+            continue
+        try:
+            clicked = page.evaluate(
+                """(i) => {
+                    const rows = Array.from(document.querySelectorAll('[role="row"][data-index]'));
+                    const row = rows[i];
+                    const cell = row && row.querySelector('[role="gridcell"]');
+                    if (cell) { cell.click(); return true; }
+                    return false;
+                }""",
+                idx,
+            )
+            if not clicked:
+                continue
+            page.wait_for_timeout(1200)
+            m = re.search(r"selected_partner_id=(\d+)", page.url)
+            if not m:
+                continue
+            partner_business_id = m.group(1)
+            hrefs = page.eval_on_selector_all(
+                'a[href*="selected_asset_type=whatsapp-business-account"]',
+                "els => els.map(e => e.getAttribute('href'))",
+            ) or []
+            for href in hrefs:
+                mm = re.search(r"selected_asset_id=(\d+)", href or "")
+                if mm and mm.group(1) == str(waba_id):
+                    log(f"[WABA_LINK] waba_id={waba_id} already shared with partner {name!r} ({partner_business_id})")
+                    matches.append({"business_id": partner_business_id, "name": name})
+                    break
+        except Exception as exc:
+            log(f"[WABA_LINK] detect_waba_partner row {idx} ({name!r}) failed: {exc}")
+            continue
+
+    return matches
+
+
 def resolve_owning_business_id(page, log=print) -> str | None:
     """Best-effort: find a business_id this profile has access to.
 

@@ -170,6 +170,12 @@ def _apply_link_result(profile: VerificarProfile, msg: dict):
             profile.shared_to_partner_at = datetime.utcnow()
         if msg.get("registered"):
             profile.registered_with_manager_at = datetime.utcnow()
+        profile.pending_partner_business_id = None
+        profile.pending_partner_name = None
+        profile.last_error = ""
+    elif status == "awaiting_token":
+        profile.pending_partner_business_id = msg.get("pending_partner_business_id") or ""
+        profile.pending_partner_name = msg.get("pending_partner_name") or ""
         profile.last_error = ""
     elif status == "restrita":
         profile.last_error = "BM restrito"
@@ -195,6 +201,9 @@ def _handle_link_summary(app, msg: dict):
         if not profile:
             return
         profile.linking_at = None
+        # Per-BM link_done frames (via _apply_link_result) already set
+        # waba_id/business_id/pending_partner_*/last_error for the last BM
+        # processed — the summary only needs to flag genuine failures.
         if msg.get("status") == "error":
             profile.last_error = f"Falhou {msg.get('failed', 0)}/{msg.get('total', 0)} BM(s)"
             profile.error_count += 1

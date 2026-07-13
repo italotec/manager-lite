@@ -185,6 +185,12 @@ class VerificarProfile(db.Model):
     shared_partner_business_id = db.Column(db.String(64), nullable=True)
     registered_with_manager_at = db.Column(db.DateTime,   nullable=True)
 
+    # Set when the agent detects the WABA already shared to a partner BM we
+    # have no saved token for — the row is "Aguardando token" until a
+    # matching PartnerCredential is added, which auto-completes it.
+    pending_partner_business_id = db.Column(db.String(64),  nullable=True)
+    pending_partner_name        = db.Column(db.String(255), nullable=True)
+
     last_error  = db.Column(db.Text,    default="", nullable=False)
     error_count = db.Column(db.Integer, default=0,  nullable=False)
 
@@ -199,8 +205,66 @@ class VerificarProfile(db.Model):
             "linking_at": bool(self.linking_at),
             "shared_to_partner_at": bool(self.shared_to_partner_at),
             "registered_with_manager_at": bool(self.registered_with_manager_at),
+            "pending_partner_business_id": self.pending_partner_business_id or "",
+            "pending_partner_name": self.pending_partner_name or "",
             "last_error": self.last_error or "",
         }
+
+
+class PartnerCredential(db.Model):
+    """A secondary partner Business Manager + Meta token the user already knows
+    about. Used only to *recognize* a WABA already shared to this partner (by
+    business_id) and pick the right token to register it — never a share
+    target on its own; the "Vincular ao Manager" main partner in Minha Conta
+    (User.share_partner_business_id) remains the only share target.
+    """
+    id          = db.Column(db.Integer, primary_key=True)
+    user_id     = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    label       = db.Column(db.String(120), default="", nullable=False)
+    business_id = db.Column(db.String(64), nullable=False)
+    token       = db.Column(db.Text, nullable=False)
+    created_at  = db.Column(db.DateTime, default=_now_sp, nullable=False)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "label": self.label or "",
+            "business_id": self.business_id,
+            "token_masked": ("•" * 8 + self.token[-4:]) if self.token and len(self.token) > 4 else "••••",
+        }
+
+
+class BspPartner(db.Model):
+    """Admin-managed name added to the built-in BSP ignore list (Manychat,
+    Gupshup, Callbell, ...) so the "Vincular ao Manager" partner detection
+    never mistakes a messaging BSP for the user's own partner BM. Global,
+    not per-user.
+    """
+    id         = db.Column(db.Integer, primary_key=True)
+    name       = db.Column(db.String(120), nullable=False)
+    created_at = db.Column(db.DateTime, default=_now_sp, nullable=False)
+
+
+# Built-in BSPs ignored by "Vincular ao Manager" partner detection — never
+# mistaken for the user's own partner BM. Admins can add more via /admin/bsp.
+DEFAULT_BSP_NAMES = [
+    "Manychat", "Gupshup", "Callbell", "360dialog", "Twilio", "Zenvia",
+    "WATI", "Take Blip", "Blip", "Infobip", "MessageBird", "Sinch",
+]
+
+
+def get_bsp_names() -> list[str]:
+    """Combined hardcoded + admin-managed BSP ignore list, sent to the agent
+    as bsp_names on every link_waba dispatch."""
+    extra = [b.name for b in BspPartner.query.all()]
+    seen = set()
+    combined = []
+    for name in DEFAULT_BSP_NAMES + extra:
+        key = name.strip().lower()
+        if key and key not in seen:
+            seen.add(key)
+            combined.append(name.strip())
+    return combined
 
 
 class ScanProfile(db.Model):

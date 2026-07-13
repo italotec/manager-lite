@@ -101,6 +101,16 @@ def create_app():
                 "ALTER TABLE user ADD COLUMN share_meta_token TEXT"))
             db.session.commit()
 
+        vp_cols = [c["name"] for c in db.inspect(db.engine).get_columns("verificar_profile")]
+        if "pending_partner_business_id" not in vp_cols:
+            db.session.execute(db.text(
+                "ALTER TABLE verificar_profile ADD COLUMN pending_partner_business_id VARCHAR(64)"))
+            db.session.commit()
+        if "pending_partner_name" not in vp_cols:
+            db.session.execute(db.text(
+                "ALTER TABLE verificar_profile ADD COLUMN pending_partner_name VARCHAR(255)"))
+            db.session.commit()
+
         # Recover DisparoJobs left "running"/"queued" by a previous restart. The
         # Disparou stamp is only written by _finish() at job end, so a job whose
         # process died mid-send never stamped it — recover it here from the send log.

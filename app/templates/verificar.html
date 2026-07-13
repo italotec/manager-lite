@@ -61,6 +61,11 @@ function statusBadge(row) {
   if (row.registered_with_manager_at) {
     badges += '<span class="text-xs px-2 py-0.5 rounded-full bg-emerald-900/50 text-emerald-400 border border-emerald-800/50">Conectada</span>';
   }
+  if (!row.registered_with_manager_at && row.pending_partner_business_id) {
+    const label = row.pending_partner_name || row.pending_partner_business_id;
+    badges += '<span class="text-xs px-2 py-0.5 rounded-full bg-violet-900/50 text-violet-300 border border-violet-800/50" title="' +
+      escapeHtml(row.pending_partner_business_id) + '">Aguardando token — ' + escapeHtml(label) + '</span>';
+  }
   if (!badges) {
     badges = '<span class="text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 border border-zinc-700">Não conectada</span>';
   }

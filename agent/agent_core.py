@@ -133,7 +133,73 @@ def _wait_for_fb_token(page, timeout: int = 120000) -> None:
         pass  # the GraphQL helpers derive their own tokens and report missing ones
 
 
-def _execute_link_waba_sync(msg: dict, log=print) -> dict:
+def _resolve_business_ids(page, log=print, fallback_id: str = "") -> list:
+    """Navigate to /select and return all business_ids the profile owns.
+
+    Single-BM profiles: Meta redirects away from /select → extract id from URL.
+    Multi-BM profiles: page stays on /select → collect anchor hrefs.
+    Falls back to facebook_link.resolve_owning_business_id, then to fallback_id.
+    """
+    import re
+    from services import facebook_link
+
+    try:
+        page.goto("https://business.facebook.com/select", timeout=30000,
+                  wait_until="domcontentloaded")
+        _wait_for_fb_token(page, timeout=20000)
+    except Exception as exc:
+        log(f"[BM-ENUM] Falha ao navegar para /select: {exc}")
+        return [fallback_id] if fallback_id else []
+
+    current_url = page.url or ""
+
+    # Meta redirected → single BM
+    if "business_home" in current_url or ("business_id=" in current_url and "/select" not in current_url):
+        m = re.search(r"business_id=(\d+)", current_url)
+        if m:
+            bid = m.group(1)
+            log(f"[BM-ENUM] 1 BM detectado (redirect) → {bid}")
+            return [bid]
+
+    # Still on /select → collect all anchors
+    if "/select" in current_url:
+        try:
+            hrefs = page.eval_on_selector_all(
+                'a[href*="business_id="]',
+                "els => els.map(e => e.getAttribute('href'))",
+            )
+            seen = []
+            for href in (hrefs or []):
+                m = re.search(r"business_id=(\d+)", href or "")
+                if not m:
+                    continue
+                bid = m.group(1)
+                if bid == "0" or bid in seen:
+                    continue
+                seen.append(bid)
+            if seen:
+                log(f"[BM-ENUM] {len(seen)} BMs detectados na /select: {seen}")
+                return seen
+        except Exception as exc:
+            log(f"[BM-ENUM] Falha ao extrair hrefs de /select: {exc}")
+
+    # Fallback: live resolution via facebook_link
+    try:
+        bid = facebook_link.resolve_owning_business_id(page, log=log)
+        if bid:
+            log(f"[BM-ENUM] 1 BM via resolve_owning_business_id → {bid}")
+            return [bid]
+    except Exception:
+        pass
+
+    if fallback_id:
+        log(f"[BM-ENUM] Usando fallback_id={fallback_id}")
+        return [fallback_id]
+
+    return []
+
+
+def _execute_link_waba_sync(msg: dict, log=print, emit=None) -> dict:
     """Open the AdsPower profile, share the WABA to the partner BM, register
     it with Manager Lite. Returns a link_done frame."""
     profile_id       = msg["profile_id"]
@@ -144,6 +210,16 @@ def _execute_link_waba_sync(msg: dict, log=print) -> dict:
     meta_token       = msg["meta_token"]
     manager_api_key  = msg["manager_api_key"]
     manager_base_url = msg.get("manager_base_url") or ""
+    bsp_names        = msg.get("bsp_names") or []
+
+    # All partners the user already has a token for (main + secondaries) —
+    # maps business_id -> token so an already-shared WABA can be registered
+    # without re-sharing. See facebook_link.detect_waba_partner.
+    known_partner_tokens = {
+        str(p["business_id"]): p["token"]
+        for p in (msg.get("known_partners") or [])
+        if p.get("business_id") and p.get("token")
+    }
 
     def _result(status: str, message: str = "", **extra) -> dict:
         return {
@@ -180,6 +256,12 @@ def _execute_link_waba_sync(msg: dict, log=print) -> dict:
             pass
         return _result("error", "Sem WebSocket endpoint do AdsPower")
 
+    # Counts for multi-BM summary
+    _n_ok = 0
+    _n_err = 0
+    _n_restrita = 0
+    _n_awaiting = 0
+
     try:
         with sync_playwright() as p:
             browser, _ws = connect_cdp_with_retry(
@@ -190,56 +272,193 @@ def _execute_link_waba_sync(msg: dict, log=print) -> dict:
             ctx = browser.contexts[0] if browser.contexts else browser.new_context()
             page = ctx.new_page()
 
-            if not business_id:
-                business_id = facebook_link.resolve_owning_business_id(page, log=log) or ""
-                if not business_id:
-                    return _result("error", "Não foi possível resolver o business_id do perfil")
+            business_ids = _resolve_business_ids(page, log, fallback_id=business_id)
+            if not business_ids:
+                return _result("error", "Não foi possível resolver nenhum business_id do perfil")
 
-            page.goto(
-                f"https://business.facebook.com/latest/settings/whatsapp_account?business_id={business_id}",
-                timeout=60000, wait_until="domcontentloaded",
-            )
-            _wait_for_fb_token(page)
+            total = len(business_ids)
+            log(f"[LINK {profile_id}] {total} BM(s) encontrado(s): {business_ids}")
 
-            if not waba_id:
-                waba_id = facebook_link.extract_waba_id_graphql(
-                    page, business_id, expected_name=waba_name or None, log=log
-                )
-                if not waba_id:
-                    return _result("error", "Não foi possível identificar o ID da WABA")
+            for idx, bid in enumerate(business_ids, start=1):
+                cur_waba_id = ""
+                try:
+                    page.goto(
+                        f"https://business.facebook.com/latest/settings/whatsapp_account?business_id={bid}",
+                        timeout=60000, wait_until="domcontentloaded",
+                    )
+                    _wait_for_fb_token(page)
 
-            try:
-                ok = facebook_link.share_waba_graphql(page, business_id, partner_biz_id, waba_id, log=log)
-            except facebook_link.BmRestrictedException as exc:
-                return _result("restrita", str(exc))
+                    # Use caller-supplied waba_id / waba_name only when there is exactly one BM
+                    if total == 1 and waba_id:
+                        cur_waba_id = waba_id
+                    else:
+                        expected = waba_name if total == 1 else None
+                        cur_waba_id = facebook_link.extract_waba_id_graphql(
+                            page, bid, expected_name=expected, log=log
+                        )
 
-            if not ok:
-                return _result("error", f"Falha ao compartilhar WABA {waba_id} com o BM parceiro")
+                    if not cur_waba_id:
+                        msg_err = f"Não foi possível identificar WABA do BM {bid}"
+                        log(f"[LINK {profile_id}] [{idx}/{total}] {msg_err}")
+                        _n_err += 1
+                        if total == 1:
+                            return _result("error", msg_err)
+                        if emit:
+                            emit({
+                                "type": "link_done", "profile_id": profile_id,
+                                "status": "error", "message": msg_err,
+                                "waba_id": "", "business_id": bid,
+                                "bm_index": idx, "bm_total": total,
+                            })
+                        continue
 
-            serial_number = ""
-            try:
-                serial_number = str((_client.get_profile(profile_id) or {}).get("serial_number") or "")
-            except Exception:
-                pass
+                    log(f"[LINK {profile_id}] [{idx}/{total}] waba_id={cur_waba_id} bid={bid}")
 
-            reg = register_business_manager(
-                base_url=manager_base_url,
-                api_key=manager_api_key,
-                waba_id=waba_id,
-                token=meta_token,
-                adspower_profile_id=profile_id,
-                serial_number=serial_number,
-            )
-            if not reg["ok"]:
-                return _result("error", f"Falha ao registrar no Manager Lite: {reg.get('error')}")
+                    # Detect a partner already holding this WABA (ignoring BSPs)
+                    # so we skip re-sharing and, if we already have a token for
+                    # that partner, register straight away.
+                    try:
+                        partner_matches = facebook_link.detect_waba_partner(
+                            page, bid, cur_waba_id, bsp_names, log=log
+                        )
+                    except Exception as exc:
+                        log(f"[LINK {profile_id}] [{idx}/{total}] detect_waba_partner falhou: {exc}")
+                        partner_matches = []
 
-            log(f"[LINK {profile_id}] Concluído — waba_id={waba_id}")
-            return {
-                "type": "link_done", "profile_id": profile_id,
-                "status": "ok", "message": "",
-                "waba_id": waba_id, "business_id": business_id,
-                "shared": True, "registered": True,
-            }
+                    reg_token = meta_token
+                    already_shared = False
+                    known_match = next(
+                        (m for m in partner_matches if m["business_id"] in known_partner_tokens), None
+                    )
+
+                    if known_match:
+                        reg_token = known_partner_tokens[known_match["business_id"]]
+                        already_shared = True
+                        log(f"[LINK {profile_id}] [{idx}/{total}] WABA já compartilhada com parceiro conhecido "
+                            f"{known_match['name']!r} ({known_match['business_id']}) — pulando compartilhamento")
+                    elif partner_matches:
+                        pending = partner_matches[0]
+                        msg_info = f"Aguardando token do parceiro {pending['name']} ({pending['business_id']})"
+                        log(f"[LINK {profile_id}] [{idx}/{total}] {msg_info}")
+                        _n_awaiting += 1
+                        if total == 1:
+                            return _result(
+                                "awaiting_token", msg_info,
+                                pending_partner_business_id=pending["business_id"],
+                                pending_partner_name=pending["name"],
+                            )
+                        if emit:
+                            emit({
+                                "type": "link_done", "profile_id": profile_id,
+                                "status": "awaiting_token", "message": msg_info,
+                                "waba_id": cur_waba_id, "business_id": bid,
+                                "pending_partner_business_id": pending["business_id"],
+                                "pending_partner_name": pending["name"],
+                                "bm_index": idx, "bm_total": total,
+                            })
+                        continue
+
+                    if not already_shared:
+                        try:
+                            ok = facebook_link.share_waba_graphql(page, bid, partner_biz_id, cur_waba_id, log=log)
+                        except facebook_link.BmRestrictedException as exc:
+                            log(f"[LINK {profile_id}] [{idx}/{total}] BM restrito: {exc}")
+                            _n_restrita += 1
+                            if total == 1:
+                                return _result("restrita", str(exc))
+                            if emit:
+                                emit({
+                                    "type": "link_done", "profile_id": profile_id,
+                                    "status": "restrita", "message": str(exc),
+                                    "waba_id": cur_waba_id, "business_id": bid,
+                                    "bm_index": idx, "bm_total": total,
+                                })
+                            continue
+
+                        if not ok:
+                            msg_err = f"Falha ao compartilhar WABA {cur_waba_id} do BM {bid}"
+                            log(f"[LINK {profile_id}] [{idx}/{total}] {msg_err}")
+                            _n_err += 1
+                            if total == 1:
+                                return _result("error", msg_err)
+                            if emit:
+                                emit({
+                                    "type": "link_done", "profile_id": profile_id,
+                                    "status": "error", "message": msg_err,
+                                    "waba_id": cur_waba_id, "business_id": bid,
+                                    "bm_index": idx, "bm_total": total,
+                                })
+                            continue
+
+                        log(f"[LINK {profile_id}] [{idx}/{total}] WABA compartilhada com partner={partner_biz_id}")
+
+                    try:
+                        serial_number = ""
+                        try:
+                            serial_number = str((_client.get_profile(profile_id) or {}).get("serial_number") or "")
+                        except Exception:
+                            pass
+
+                        reg = register_business_manager(
+                            base_url=manager_base_url,
+                            api_key=manager_api_key,
+                            waba_id=cur_waba_id,
+                            token=reg_token,
+                            adspower_profile_id=profile_id,
+                            serial_number=serial_number,
+                        )
+                        if not reg["ok"]:
+                            raise RuntimeError(reg.get("error") or "Manager API error")
+                        log(f"[LINK {profile_id}] [{idx}/{total}] Registrado no Manager Lite")
+                    except Exception as exc_reg:
+                        msg_err = f"Falha ao registrar no Manager Lite: {exc_reg}"
+                        log(f"[LINK {profile_id}] [{idx}/{total}] {msg_err}")
+                        _n_err += 1
+                        if total == 1:
+                            return _result("error", msg_err)
+                        if emit:
+                            emit({
+                                "type": "link_done", "profile_id": profile_id,
+                                "status": "error", "message": msg_err,
+                                "waba_id": cur_waba_id, "business_id": bid,
+                                "bm_index": idx, "bm_total": total,
+                            })
+                        continue
+
+                    _n_ok += 1
+                    log(f"[LINK {profile_id}] [{idx}/{total}] ✓ BM {bid} vinculado")
+
+                    if total == 1:
+                        return {
+                            "type": "link_done", "profile_id": profile_id,
+                            "status": "ok", "message": "",
+                            "waba_id": cur_waba_id, "business_id": bid,
+                            "shared": not already_shared, "registered": True,
+                        }
+
+                    if emit:
+                        emit({
+                            "type": "link_done", "profile_id": profile_id,
+                            "status": "ok", "message": "",
+                            "waba_id": cur_waba_id, "business_id": bid,
+                            "shared": not already_shared, "registered": True,
+                            "bm_index": idx, "bm_total": total,
+                        })
+
+                except Exception as exc_bm:
+                    import traceback as _tb
+                    log(f"[LINK {profile_id}] [{idx}/{total}] Exceção no BM {bid}: {exc_bm}")
+                    print(_tb.format_exc(), flush=True)
+                    _n_err += 1
+                    if total == 1:
+                        return _result("error", str(exc_bm)[:500])
+                    if emit:
+                        emit({
+                            "type": "link_done", "profile_id": profile_id,
+                            "status": "error", "message": str(exc_bm)[:500],
+                            "waba_id": cur_waba_id, "business_id": bid,
+                            "bm_index": idx, "bm_total": total,
+                        })
 
     except Exception as exc:
         import traceback as _tb
@@ -253,12 +472,36 @@ def _execute_link_waba_sync(msg: dict, log=print) -> dict:
             pass
         _open_pids.discard(profile_id)
 
+    # Multi-BM summary frame (single-BM returns early above)
+    if _n_ok > 0:
+        summary_status = "ok"
+    elif _n_err == 0 and _n_restrita == 0 and _n_awaiting > 0:
+        summary_status = "awaiting_token"
+    else:
+        summary_status = "error"
+    log(f"[LINK {profile_id}] Resumo: ok={_n_ok} erro={_n_err} restrita={_n_restrita} aguardando={_n_awaiting}")
+    return {
+        "type": "link_summary",
+        "profile_id": profile_id,
+        "status": summary_status,
+        "total": _n_ok + _n_err + _n_restrita + _n_awaiting,
+        "ok": _n_ok,
+        "failed": _n_err,
+        "restrita": _n_restrita,
+        "awaiting": _n_awaiting,
+    }
+
 
 async def _handle_link_waba(msg: dict, outbox: asyncio.Queue, log=print):
     profile_id = msg.get("profile_id")
     await outbox.put(json.dumps({"type": "link_start", "profile_id": profile_id}))
+    loop = asyncio.get_event_loop()
+
+    def emit(frame: dict):
+        loop.call_soon_threadsafe(outbox.put_nowait, json.dumps(frame))
+
     async with _LINK_SEMAPHORE:
-        result = await asyncio.to_thread(_execute_link_waba_sync, msg, log)
+        result = await asyncio.to_thread(_execute_link_waba_sync, msg, log, emit)
     await outbox.put(json.dumps(result))
 
 

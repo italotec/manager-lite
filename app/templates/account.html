@@ -58,8 +58,8 @@
         </svg>
       </div>
       <div>
-        <div class="font-semibold text-zinc-100">Vincular ao Manager</div>
-        <div class="text-xs text-zinc-500">BM parceiro e token Meta usados para compartilhar WABAs na página Verificar.</div>
+        <div class="font-semibold text-zinc-100">Vincular ao Manager — Parceiro principal</div>
+        <div class="text-xs text-zinc-500">BM parceiro e token Meta usados para compartilhar WABAs na página Verificar quando nenhum parceiro já está anexado.</div>
       </div>
     </div>
 
@@ -84,6 +84,50 @@
 
   </div>
 
+  {# ── Secondary partners (match-only) ── #}
+  <div class="rounded-2xl border border-zinc-800 bg-zinc-900/30 p-6 space-y-4">
+
+    <div class="flex items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-violet-900/60 flex items-center justify-center">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-violet-400" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+        </div>
+        <div>
+          <div class="font-semibold text-zinc-100">Parceiros adicionais</div>
+          <div class="text-xs text-zinc-500">BMs parceiros já conhecidos — usados apenas para reconhecer WABAs já compartilhadas com eles.</div>
+        </div>
+      </div>
+      <button type="button" onclick="openPartnerModal()"
+              class="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold bg-violet-700 hover:bg-violet-600 text-white">
+        + Adicionar parceiro
+      </button>
+    </div>
+
+    {% if partners %}
+    <div class="space-y-2">
+      {% for p in partners %}
+      <div class="flex items-center justify-between gap-3 rounded-xl bg-zinc-950 border border-zinc-800 px-4 py-2.5">
+        <div class="min-w-0">
+          <div class="text-sm text-zinc-200 truncate">{{ p.label or "Sem nome" }}</div>
+          <div class="text-xs text-zinc-500 font-mono">{{ p.business_id }} · {{ p.to_dict().token_masked }}</div>
+        </div>
+        <form method="POST" action="{{ url_for('account.delete_partner', partner_id=p.id) }}"
+              onsubmit="return confirm('Remover este parceiro?');">
+          <button type="submit" class="text-xs text-red-400 hover:text-red-300 px-2 py-1">Remover</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-xs text-zinc-600">Nenhum parceiro adicional cadastrado.</p>
+    {% endif %}
+
+  </div>
+
   {# ── Account info ── #}
   <div class="rounded-2xl border border-zinc-800 bg-zinc-900/30 p-6 space-y-3">
     <div class="font-semibold text-zinc-100">Informações da Conta</div>
@@ -101,5 +145,52 @@
   </div>
 
 </div>
+
+<!-- ── Add secondary partner modal ────────────────────────────────────────── -->
+<div id="partnerModal" class="hidden fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+  <div class="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 w-full max-w-md space-y-4">
+    <div class="flex items-center justify-between">
+      <h3 class="text-base font-semibold text-zinc-100">Adicionar parceiro</h3>
+      <button type="button" onclick="closePartnerModal()" class="text-zinc-500 hover:text-zinc-300 text-xl leading-none">&times;</button>
+    </div>
+
+    <form method="POST" action="{{ url_for('account.add_partner') }}" class="space-y-3">
+      <div>
+        <label class="block text-xs text-zinc-500 mb-1">Nome (opcional)</label>
+        <input type="text" name="label" placeholder="Ex: Agrolog"
+               class="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-4 py-2 text-sm text-zinc-200" />
+      </div>
+      <div>
+        <label class="block text-xs text-zinc-500 mb-1">ID do BM parceiro</label>
+        <input type="text" name="business_id" required
+               class="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-4 py-2 text-sm text-zinc-200 font-mono" />
+      </div>
+      <div>
+        <label class="block text-xs text-zinc-500 mb-1">Token Meta</label>
+        <input type="password" name="token" required
+               class="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-4 py-2 text-sm text-zinc-200 font-mono" />
+      </div>
+      <div class="flex items-center gap-3 pt-2">
+        <button type="submit"
+                class="px-4 py-2 rounded-xl bg-violet-700 hover:bg-violet-600 text-sm font-semibold text-white">
+          Salvar
+        </button>
+        <button type="button" onclick="closePartnerModal()"
+                class="px-4 py-2 rounded-xl bg-zinc-700 hover:bg-zinc-600 text-sm font-semibold">
+          Cancelar
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openPartnerModal() {
+  document.getElementById("partnerModal").classList.remove("hidden");
+}
+function closePartnerModal() {
+  document.getElementById("partnerModal").classList.add("hidden");
+}
+</script>
 
 {% endblock %}
