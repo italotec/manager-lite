@@ -26,6 +26,16 @@ class BmRestrictedException(RuntimeError):
     pass
 
 
+def _safe_log(log, msg: str) -> None:
+    """Call log(msg) without ever raising. A logging failure (e.g. a non-UTF8
+    stdout choking on a non-ASCII character in a live business/partner name)
+    must never be able to swallow a real result or abort a caller's loop."""
+    try:
+        log(msg)
+    except Exception:
+        pass
+
+
 # ── WABA partner-sharing permission task IDs (full WhatsApp permission set) ──
 WABA_FULL_PERMISSION_TASKS = [
     "1178671679425452", "2267064093541969", "468633770384254", "337342957148859",
@@ -111,11 +121,11 @@ def list_waba_ids_graphql(page, business_id: str, log=print) -> list[dict]:
     try:
         result = page.evaluate(js, variables)
         if not result.get("ok"):
-            log(f"[WABA_LINK] list_waba_ids_graphql error for bm={business_id}: {result}")
+            _safe_log(log, f"[WABA_LINK] list_waba_ids_graphql error for bm={business_id}: {result}")
             return []
         return result.get("wabas") or []
     except Exception as exc:
-        log(f"[WABA_LINK] list_waba_ids_graphql exception for bm={business_id}: {exc}")
+        _safe_log(log, f"[WABA_LINK] list_waba_ids_graphql exception for bm={business_id}: {exc}")
         return []
 
 
@@ -126,15 +136,15 @@ def extract_waba_id_graphql(page, business_id: str, expected_name: str | None = 
     """
     wabas = list_waba_ids_graphql(page, business_id, log=log)
     if not wabas:
-        log(f"[WABA_LINK] no WABA assets found for business_id={business_id}")
+        _safe_log(log, f"[WABA_LINK] no WABA assets found for business_id={business_id}")
         return None
     if expected_name:
         for w in wabas:
             if expected_name.lower() in (w.get("name") or "").lower():
-                log(f"[WABA_LINK] matched waba_id={w['id']} name={w.get('name')!r}")
+                _safe_log(log, f"[WABA_LINK] matched waba_id={w['id']} name={w.get('name')!r}")
                 return w["id"]
     waba_id = wabas[0]["id"]
-    log(f"[WABA_LINK] extracted waba_id={waba_id} (first of {len(wabas)})")
+    _safe_log(log, f"[WABA_LINK] extracted waba_id={waba_id} (first of {len(wabas)})")
     return waba_id
 
 
@@ -181,12 +191,12 @@ def check_bm_restricted_graphql(page, business_id: str, log=print) -> bool | Non
         inner = (((result or {}).get("parsed") or {}).get("data") or {}).get("data") or {}
         if "isRestricted" in inner:
             is_restricted = bool(inner.get("isRestricted"))
-            log(f"[WABA_LINK] business_id={business_id} isRestricted={is_restricted} restrictionType={inner.get('restrictionType')}")
+            _safe_log(log, f"[WABA_LINK] business_id={business_id} isRestricted={is_restricted} restrictionType={inner.get('restrictionType')}")
             return is_restricted
-        log(f"[WABA_LINK] unexpected restriction response shape for {business_id}: {str(result)[:300]}")
+        _safe_log(log, f"[WABA_LINK] unexpected restriction response shape for {business_id}: {str(result)[:300]}")
         return None
     except Exception as exc:
-        log(f"[WABA_LINK] restriction probe failed for {business_id}: {exc}")
+        _safe_log(log, f"[WABA_LINK] restriction probe failed for {business_id}: {exc}")
         return None
 
 
@@ -207,7 +217,7 @@ def share_waba_graphql(page, business_id: str, partner_business_id: str, waba_id
         page.goto(partners_url, wait_until="domcontentloaded", timeout=30_000)
         page.wait_for_timeout(2000)
     except Exception as exc:
-        log(f"[WABA_LINK] navigate to Partners page failed: {exc}")
+        _safe_log(log, f"[WABA_LINK] navigate to Partners page failed: {exc}")
 
     if check_bm_restricted_graphql(page, business_id, log=log) is True:
         raise BmRestrictedException(
@@ -271,12 +281,12 @@ def share_waba_graphql(page, business_id: str, partner_business_id: str, waba_id
     try:
         result = page.evaluate(js, variables)
         if result.get("ok"):
-            log(f"[WABA_LINK] share mutation succeeded waba_id={waba_id} -> partner={partner_business_id}")
+            _safe_log(log, f"[WABA_LINK] share mutation succeeded waba_id={waba_id} -> partner={partner_business_id}")
             return True
-        log(f"[WABA_LINK] share mutation did not succeed: {result}")
+        _safe_log(log, f"[WABA_LINK] share mutation did not succeed: {result}")
         return False
     except Exception as exc:
-        log(f"[WABA_LINK] share_waba_graphql exception: {exc}")
+        _safe_log(log, f"[WABA_LINK] share_waba_graphql exception: {exc}")
         return False
 
 
@@ -299,7 +309,7 @@ def detect_waba_partner(page, business_id: str, waba_id: str, bsp_names: list[st
         page.goto(partners_url, wait_until="domcontentloaded", timeout=30_000)
         page.wait_for_timeout(2000)
     except Exception as exc:
-        log(f"[WABA_LINK] detect_waba_partner navigate failed: {exc}")
+        _safe_log(log, f"[WABA_LINK] detect_waba_partner navigate failed: {exc}")
         return []
 
     bsp_lower = [b.strip().lower() for b in (bsp_names or []) if b and b.strip()]
@@ -311,7 +321,7 @@ def detect_waba_partner(page, business_id: str, waba_id: str, bsp_names: list[st
                 .filter(Boolean)"""
         ) or []
     except Exception as exc:
-        log(f"[WABA_LINK] detect_waba_partner row scan failed for bm={business_id}: {exc}")
+        _safe_log(log, f"[WABA_LINK] detect_waba_partner row scan failed for bm={business_id}: {exc}")
         return []
 
     matches: list[dict] = []
@@ -343,11 +353,11 @@ def detect_waba_partner(page, business_id: str, waba_id: str, bsp_names: list[st
             for href in hrefs:
                 mm = re.search(r"selected_asset_id=(\d+)", href or "")
                 if mm and mm.group(1) == str(waba_id):
-                    log(f"[WABA_LINK] waba_id={waba_id} already shared with partner {name!r} ({partner_business_id})")
+                    _safe_log(log, f"[WABA_LINK] waba_id={waba_id} already shared with partner {name!r} ({partner_business_id})")
                     matches.append({"business_id": partner_business_id, "name": name})
                     break
         except Exception as exc:
-            log(f"[WABA_LINK] detect_waba_partner row {idx} ({name!r}) failed: {exc}")
+            _safe_log(log, f"[WABA_LINK] detect_waba_partner row {idx} ({name!r}) failed: {exc}")
             continue
 
     return matches
@@ -367,7 +377,7 @@ def resolve_owning_business_id(page, log=print) -> str | None:
             page.wait_for_timeout(2000)
             m = re.search(r"business_id[=/](\d+)", page.url)
             if m:
-                log(f"[WABA_LINK] resolved business_id={m.group(1)} from URL {page.url}")
+                _safe_log(log, f"[WABA_LINK] resolved business_id={m.group(1)} from URL {page.url}")
                 return m.group(1)
             hrefs = page.locator("a[href*='business_id=']").evaluate_all(
                 "els => els.map(e => e.getAttribute('href'))"
@@ -375,8 +385,8 @@ def resolve_owning_business_id(page, log=print) -> str | None:
             for href in hrefs:
                 mm = re.search(r"business_id=(\d+)", href or "")
                 if mm:
-                    log(f"[WABA_LINK] resolved business_id={mm.group(1)} from /select anchor")
+                    _safe_log(log, f"[WABA_LINK] resolved business_id={mm.group(1)} from /select anchor")
                     return mm.group(1)
         except Exception as exc:
-            log(f"[WABA_LINK] resolve_owning_business_id error on {url}: {exc}")
+            _safe_log(log, f"[WABA_LINK] resolve_owning_business_id error on {url}: {exc}")
     return None

@@ -133,11 +133,22 @@ def _wait_for_fb_token(page, timeout: int = 120000) -> None:
         pass  # the GraphQL helpers derive their own tokens and report missing ones
 
 
+def _safe_log(log, msg: str) -> None:
+    """Call log(msg) without ever raising. A logging failure (e.g. a non-UTF8
+    stdout choking on a non-ASCII character) must never be able to swallow a
+    real result — every log() call in this module that sits near a `return`
+    goes through this instead of being called directly inside the same try."""
+    try:
+        log(msg)
+    except Exception:
+        pass
+
+
 def _resolve_business_ids(page, log=print, fallback_id: str = "") -> list:
     """Navigate to /select and return all business_ids the profile owns.
 
-    Single-BM profiles: Meta redirects away from /select → extract id from URL.
-    Multi-BM profiles: page stays on /select → collect anchor hrefs.
+    Single-BM profiles: Meta redirects away from /select -> extract id from URL.
+    Multi-BM profiles: page stays on /select -> collect anchor hrefs.
     Falls back to facebook_link.resolve_owning_business_id, then to fallback_id.
     """
     import re
@@ -148,27 +159,27 @@ def _resolve_business_ids(page, log=print, fallback_id: str = "") -> list:
                   wait_until="domcontentloaded")
         _wait_for_fb_token(page, timeout=20000)
     except Exception as exc:
-        log(f"[BM-ENUM] Falha ao navegar para /select: {exc}")
+        _safe_log(log, f"[BM-ENUM] Falha ao navegar para /select: {exc}")
         return [fallback_id] if fallback_id else []
 
     current_url = page.url or ""
 
-    # Meta redirected → single BM
+    # Meta redirected -> single BM
     if "business_home" in current_url or ("business_id=" in current_url and "/select" not in current_url):
         m = re.search(r"business_id=(\d+)", current_url)
         if m:
             bid = m.group(1)
-            log(f"[BM-ENUM] 1 BM detectado (redirect) → {bid}")
+            _safe_log(log, f"[BM-ENUM] 1 BM detectado (redirect) -> {bid}")
             return [bid]
 
-    # Still on /select → collect all anchors
+    # Still on /select -> collect all anchors
     if "/select" in current_url:
+        seen: list[str] = []
         try:
             hrefs = page.eval_on_selector_all(
                 'a[href*="business_id="]',
                 "els => els.map(e => e.getAttribute('href'))",
             )
-            seen = []
             for href in (hrefs or []):
                 m = re.search(r"business_id=(\d+)", href or "")
                 if not m:
@@ -177,23 +188,24 @@ def _resolve_business_ids(page, log=print, fallback_id: str = "") -> list:
                 if bid == "0" or bid in seen:
                     continue
                 seen.append(bid)
-            if seen:
-                log(f"[BM-ENUM] {len(seen)} BMs detectados na /select: {seen}")
-                return seen
         except Exception as exc:
-            log(f"[BM-ENUM] Falha ao extrair hrefs de /select: {exc}")
+            _safe_log(log, f"[BM-ENUM] Falha ao extrair hrefs de /select: {exc}")
+        if seen:
+            _safe_log(log, f"[BM-ENUM] {len(seen)} BMs detectados na /select: {seen}")
+            return seen
 
     # Fallback: live resolution via facebook_link
+    bid = None
     try:
         bid = facebook_link.resolve_owning_business_id(page, log=log)
-        if bid:
-            log(f"[BM-ENUM] 1 BM via resolve_owning_business_id → {bid}")
-            return [bid]
     except Exception:
-        pass
+        bid = None
+    if bid:
+        _safe_log(log, f"[BM-ENUM] 1 BM via resolve_owning_business_id -> {bid}")
+        return [bid]
 
     if fallback_id:
-        log(f"[BM-ENUM] Usando fallback_id={fallback_id}")
+        _safe_log(log, f"[BM-ENUM] Usando fallback_id={fallback_id}")
         return [fallback_id]
 
     return []

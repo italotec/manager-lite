@@ -414,7 +414,7 @@ def add_card_via_cdp(page, card: dict, business_id: str, waba_id: str = "", log=
                 log(f"[CARD] resolve_bm error {acct}: {e}")
                 return ""
             body_snip = str(res.get("body", ""))
-            log(f"[CARD] resolve_bm {acct} → bm={res.get('bm')} body={body_snip[:150]}")
+            log(f"[CARD] resolve_bm {acct} -> bm={res.get('bm')} body={body_snip[:150]}")
             if res.get("bm"):
                 return res["bm"]
             # billable_account:null → billing not initialized yet; set location first
@@ -432,7 +432,7 @@ def add_card_via_cdp(page, card: dict, business_id: str, waba_id: str = "", log=
                     log(f"[CARD] billing init error: {e}")
                 try:
                     res2 = page.evaluate(RESOLVE_BM_JS, {"wabaAccount": acct, "docId": _RESOLVE_BM_DOC_ID})
-                    log(f"[CARD] resolve_bm retry {acct} → bm={res2.get('bm')} "
+                    log(f"[CARD] resolve_bm retry {acct} -> bm={res2.get('bm')} "
                         f"body={str(res2.get('body',''))[:150]}")
                     return res2.get("bm") or ""
                 except Exception as e:
@@ -447,7 +447,7 @@ def add_card_via_cdp(page, card: dict, business_id: str, waba_id: str = "", log=
                     "error": f"Não foi possível resolver a conta de pagamento (BM). "
                              f"waba_account={waba_account}"}
 
-        log(f"[CARD] WABA={waba_account} → BM={bm_account}")
+        log(f"[CARD] WABA={waba_account} -> BM={bm_account}")
 
         # ── Step 4: Open billing wizard to load BillingPTTUtils crypto bundle ─
         # Click the BM-level "Adicionar"/"Add" button (short text, no data-testid).
