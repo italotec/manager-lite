@@ -31,6 +31,15 @@ def rows():
     return jsonify({"rows": [p.to_dict() for p in profiles]})
 
 
+@bp.route("/open/<profile_id>", methods=["POST"])
+@login_required
+def open_adspower(profile_id):
+    if not is_agent_connected(current_user.id):
+        return jsonify({"ok": False, "error": "Agente não conectado. Abra o cliente local primeiro."}), 400
+    push_to_agent(current_user.id, {"type": "open_browser", "profile_id": profile_id, "cmd_id": None})
+    return jsonify({"ok": True})
+
+
 @bp.route("/link", methods=["POST"])
 @login_required
 def link():

@@ -26,6 +26,7 @@
         <th class="py-3 px-3 text-left">Grupo</th>
         <th class="py-3 px-3 text-left">WABA</th>
         <th class="py-3 px-3 text-left">Status</th>
+        <th class="py-3 px-3 text-left w-10"></th>
       </tr>
     </thead>
     <tbody id="rowsBody" class="divide-y divide-zinc-800/60"></tbody>
@@ -106,6 +107,18 @@ function renderRows() {
       <td class="py-3 px-3 text-zinc-400">${escapeHtml(row.group_name) || "—"}</td>
       <td class="py-3 px-3 font-mono text-zinc-400 text-xs">${escapeHtml(row.waba_id) || "—"}</td>
       <td class="py-3 px-3">${statusBadge(row)}</td>
+      <td class="py-3 px-3">
+        <button type="button"
+                title="Abrir no AdsPower"
+                onclick="openProfile('${row.profile_id}')"
+                class="p-1.5 rounded-lg text-zinc-500 hover:!text-emerald-400 hover:bg-emerald-950/40 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2"></rect>
+            <path d="M8 21h8"></path><path d="M12 17v4"></path>
+          </svg>
+        </button>
+      </td>
     </tr>
   `).join("");
 
@@ -153,6 +166,16 @@ async function conectarSelected() {
     await fetchRows();
   } finally {
     btn.disabled = false;
+  }
+}
+
+async function openProfile(pid) {
+  try {
+    const r = await fetch("/verificar/open/" + pid, { method: "POST" });
+    const d = await r.json();
+    if (!d.ok) showToast(d.error || "Erro ao abrir perfil.", false);
+  } catch (e) {
+    showToast("Erro ao abrir perfil.", false);
   }
 }
 
