@@ -1,0 +1,61 @@
+name: Build macOS Card Client
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [master]
+    paths:
+      - 'agent/**'
+      - '.github/workflows/build-mac-client.yml'
+
+jobs:
+  build:
+    # macos-14+ runners are Apple Silicon (arm64) — matches the target Mac.
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Verify arch and Tk
+        run: |
+          python3 -c "import platform, tkinter; print(platform.machine(), tkinter.TkVersion)"
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+          # No `playwright install chromium` — services/adspower.py attaches to
+          # AdsPower's own Chromium over CDP, it never launches a browser itself.
+
+      - name: Generate .icns from bundled icon mark
+        run: |
+          mkdir -p icon.iconset
+          sips -z 16 16     prosperidade_icon_1024.png --out icon.iconset/icon_16x16.png
+          sips -z 32 32     prosperidade_icon_1024.png --out icon.iconset/icon_16x16@2x.png
+          sips -z 32 32     prosperidade_icon_1024.png --out icon.iconset/icon_32x32.png
+          sips -z 64 64     prosperidade_icon_1024.png --out icon.iconset/icon_32x32@2x.png
+          sips -z 128 128   prosperidade_icon_1024.png --out icon.iconset/icon_128x128.png
+          sips -z 256 256   prosperidade_icon_1024.png --out icon.iconset/icon_128x128@2x.png
+          sips -z 256 256   prosperidade_icon_1024.png --out icon.iconset/icon_256x256.png
+          sips -z 512 512   prosperidade_icon_1024.png --out icon.iconset/icon_256x256@2x.png
+          sips -z 512 512   prosperidade_icon_1024.png --out icon.iconset/icon_512x512.png
+          cp prosperidade_icon_1024.png icon.iconset/icon_512x512@2x.png
+          iconutil -c icns icon.iconset -o prosperidadelogo.icns
+
+      - name: Build with PyInstaller
+        run: pyinstaller "Card Client-mac.spec"
+
+      - name: Verify built binary architecture
+        run: file "dist/Card Client.app/Contents/MacOS/Card Client"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Card-Client-macOS
+          path: agent/dist/Card Client.app
+          if-no-files-found: error
