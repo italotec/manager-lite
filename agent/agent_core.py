@@ -10,10 +10,19 @@ Call init(adspower_client) once before connect_loop().
 """
 import asyncio
 import json
+import ssl
 import threading
 
+import certifi
 import websockets
 import websockets.exceptions
+
+# Frozen macOS builds bundle their own OpenSSL, which doesn't read the system
+# Keychain the way the OS's own Python does — without an explicit CA bundle,
+# wss:// handshakes fail with CERTIFICATE_VERIFY_FAILED / "unable to get
+# local issuer certificate". certifi ships a CA bundle we can point at
+# instead, and PyInstaller already collects it (see the .spec files).
+_SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
 
 # ── Module-level init ─────────────────────────────────────────────────────────
 
@@ -926,6 +935,7 @@ async def connect_loop(
                 ping_timeout=10,
                 open_timeout=15,
                 compression=None,
+                ssl=_SSL_CONTEXT if ws_url.startswith("wss://") else None,
             ) as ws:
                 log("[AGENT] Conectado!")
                 last_failure_repr = ""
