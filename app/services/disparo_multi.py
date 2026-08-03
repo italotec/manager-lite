@@ -152,12 +152,14 @@ def start_batch(app, user_id: int,
             bm_cfg = (templates_cfg.get("per_bm") or {}).get(waba_id, {})
             template_name = bm_cfg.get("template_name", "")
             template_language = bm_cfg.get("template_language", "en")
+            templates_cycle = []
         else:
             # templates_cfg is a list; find entry for this waba_id
             cfg = next((c for c in templates_cfg if c.get("waba_id") == waba_id), {})
             template_name = cfg.get("template_name", "")
             template_language = cfg.get("template_language", "en")
             param_map = cfg.get("param_map", [])
+            templates_cycle = cfg.get("templates_cycle", [])
 
         rows_slice = pool[bm["start"]:bm["end"]]
 
@@ -178,6 +180,7 @@ def start_batch(app, user_id: int,
             max_leads=0,
             preloaded_rows=rows_slice,
             async_limit=child_async_limit,
+            templates_cycle=templates_cycle,
         )
 
         children.append({

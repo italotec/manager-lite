@@ -292,15 +292,18 @@ async def _send_template_async(session, phone, phone_number_id, token,
 async def _run_async_jobs(state, pending, phone_col, phone_number_id, token,
                           template_name, template_language, param_map, namespace,
                           sent_path, log_path, skip_log, user_id=0, waba_id="",
-                          async_limit=500):
+                          async_limit=500, cycle=None):
     import aiohttp as _aiohttp
     sem = asyncio.Semaphore(async_limit)
     # Collect results in memory — no file I/O inside coroutines (would block event loop)
     results = []  # list of (phone, success, msg, ts)
 
+    cycle = cycle or [{"name": template_name, "language": template_language, "param_map": param_map or []}]
+    n_cycle = len(cycle)
+
     connector = _aiohttp.TCPConnector(limit=async_limit, limit_per_host=async_limit)
     async with _aiohttp.ClientSession(connector=connector) as session:
-        async def _task(row):
+        async def _task(row, idx):
             async with sem:
                 if state["stop_requested"]:
                     return
@@ -308,14 +311,15 @@ async def _run_async_jobs(state, pending, phone_col, phone_number_id, token,
                 if not phone:
                     state["skipped"] += 1
                     return
+                tpl = cycle[idx % n_cycle]
                 params = [
                     {"name": pm.get("name", ""),
                      "value": str(row.get(pm.get("column", ""), "")).strip()}
-                    for pm in param_map
+                    for pm in tpl["param_map"]
                 ]
                 success, msg = await _send_template_async(
                     session, phone, phone_number_id, token,
-                    template_name, template_language, params, namespace)
+                    tpl["name"], tpl["language"], params, namespace)
                 ts = datetime.now(_SP).strftime("%H:%M:%S")
                 results.append((phone, success, msg, ts))
                 # update in-memory counters (asyncio is single-threaded — no races)
@@ -326,7 +330,7 @@ async def _run_async_jobs(state, pending, phone_col, phone_number_id, token,
                     _flag_erro_generic_if_needed(user_id, waba_id, state, msg)
                 state["last_message"] = f"{'✓' if success else '✗'} {phone}: {msg}"
 
-        await asyncio.gather(*[_task(row) for row in pending])
+        await asyncio.gather(*[_task(row, i) for i, row in enumerate(pending)])
 
     # Batch write all logs after all requests complete — use LOCK so concurrent
     # multi-BM child jobs don't interleave writes to sent_path.
@@ -359,7 +363,8 @@ def _run_disparo(app, job_id: int, user_id: int,
                  has_header: bool = True,
                  max_leads: int = 0,
                  preloaded_rows: list | None = None,
-                 async_limit: int = 500):
+                 async_limit: int = 500,
+                 templates_cycle: list | None = None):
     """
     Runs in a single daemon thread (the 'orchestrator').
     All counters live in RAM (_live_jobs). DB is only written at start and end.
@@ -372,6 +377,14 @@ def _run_disparo(app, job_id: int, user_id: int,
     }
     _live_jobs[job_id] = state
     log_fh = None
+
+    # Rotation cycle: a plain (non-rotating) job is just a cycle of length 1, so
+    # both paths share the same lookup — `cycle[idx % n_cycle]` — with no extra
+    # branching in the hot loop.
+    cycle = templates_cycle or [
+        {"name": template_name, "language": template_language, "param_map": param_map or []}
+    ]
+    n_cycle = len(cycle)
 
     def _finish(status: str, msg: str):
         state["status"] = status
@@ -472,18 +485,19 @@ def _run_disparo(app, job_id: int, user_id: int,
             log_fh.flush()
             _pending_flush = 0
 
-    def _worker(row: dict):
+    def _worker(row: dict, idx: int):
         """Pure HTTP worker — returns (phone, success, msg)."""
         phone = str(row.get(phone_col, "")).strip()
         if not phone:
             return phone, None, "telefone vazio"
+        tpl = cycle[idx % n_cycle]
         params = [
             {"name": pm.get("name", ""),
              "value": str(row.get(pm.get("column", ""), "")).strip()}
-            for pm in param_map
+            for pm in tpl["param_map"]
         ]
         success, msg = _send_template(
-            phone, phone_number_id, token, template_name, template_language, params, namespace
+            phone, phone_number_id, token, tpl["name"], tpl["language"], params, namespace
         )
         return phone, success, msg
 
@@ -500,7 +514,7 @@ def _run_disparo(app, job_id: int, user_id: int,
                         state, pending, phone_col, phone_number_id, token,
                         template_name, template_language, param_map, namespace,
                         sent_path, log_path, skip_log, user_id, waba_id,
-                        async_limit,
+                        async_limit, cycle,
                     ))
                 finally:
                     _loop.close()
@@ -510,7 +524,7 @@ def _run_disparo(app, job_id: int, user_id: int,
                     state, pending, phone_col, phone_number_id, token,
                     template_name, template_language, param_map, namespace,
                     sent_path, log_path, skip_log, user_id, waba_id,
-                    async_limit,
+                    async_limit, cycle,
                 ))
             if state["stop_requested"]:
                 _finish("stopped", "Envio interrompido pelo usuário.")
@@ -522,14 +536,14 @@ def _run_disparo(app, job_id: int, user_id: int,
             WINDOW = max(max_workers * 4, 200)
 
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                row_iter = iter(pending)
+                row_iter = enumerate(pending)
                 live: dict = {}
 
                 # Seed the initial window
-                for row in row_iter:
+                for i, row in row_iter:
                     if len(live) >= WINDOW:
                         break
-                    live[executor.submit(_worker, row)] = row
+                    live[executor.submit(_worker, row, i)] = row
 
                 while live:
                     if state["stop_requested"]:
@@ -568,9 +582,10 @@ def _run_disparo(app, job_id: int, user_id: int,
                         state["last_message"] = f"{'✓' if success else '✗'} {phone}: {msg}"
 
                         # Pull in the next row to refill the window
-                        next_row = next(row_iter, None)
-                        if next_row is not None:
-                            live[executor.submit(_worker, next_row)] = next_row
+                        next_item = next(row_iter, None)
+                        if next_item is not None:
+                            next_i, next_row = next_item
+                            live[executor.submit(_worker, next_row, next_i)] = next_row
 
     except Exception as exc:
         _finish("error", f"Erro inesperado: {str(exc)[:300]}")
@@ -594,7 +609,8 @@ def start_disparo_job(app, user_id: int, csv_filename: str,
                       has_header: bool = True,
                       max_leads: int = 0,
                       preloaded_rows: list | None = None,
-                      async_limit: int = 500) -> int:
+                      async_limit: int = 500,
+                      templates_cycle: list | None = None) -> int:
     csv_path = os.path.join(csvs_dir(user_id), csv_filename)
 
     with app.app_context():
@@ -611,7 +627,7 @@ def start_disparo_job(app, user_id: int, csv_filename: str,
         args=(app, job_id, user_id, csv_path, phone_col,
               phone_number_id, token, template_name, template_language,
               param_map, max_workers, skip_log, waba_id, has_header, max_leads,
-              preloaded_rows, async_limit),
+              preloaded_rows, async_limit, templates_cycle),
         daemon=True,
     )
     t.start()

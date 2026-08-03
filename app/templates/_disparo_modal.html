@@ -55,6 +55,17 @@
           <div id="disparoTabDisparar" class="space-y-4">
             <div class="rounded-2xl border border-zinc-800 bg-zinc-900/30 p-4">
               <div class="text-xs font-semibold uppercase tracking-wide text-zinc-400 mb-3">Contas selecionadas</div>
+              <label class="flex items-start gap-2 mb-3 cursor-pointer select-none">
+                <input type="checkbox" id="rotateTemplatesChk" class="mt-0.5 accent-emerald-600"
+                       onchange="setRotateTemplates(this.checked)">
+                <span>
+                  <span class="text-sm">Alternar entre todos os templates</span>
+                  <span class="block text-[11px] text-zinc-500">
+                    Cada lead recebe um template diferente, em rodízio — volta ao primeiro
+                    depois que todos enviarem uma vez.
+                  </span>
+                </span>
+              </label>
               <div id="accountsListContainer" class="space-y-2"></div>
             </div>
 
@@ -107,6 +118,7 @@ let DISPARO_ALL_WABAS = {};   // waba_id -> {waba_id, name, token, phones, tier,
 let disparoListState = null;  // {list_id, columns, preview, row_count}
 let disparoBmState = {};      // waba_id -> {templates, templatesError, selectedTemplate, phoneNumberId}
 let disparoGroupConfig = {};  // varCount -> [{column}, ...] — shared column mapping per group of WABAs
+let disparoRotateTemplates = false; // when true, each WABA cycles through all its APPROVED templates
 let disparoSpeedValue = 1;
 let disparoTravarParamMap = [];
 
@@ -127,11 +139,14 @@ async function openDisparoModal() {
   disparoListState = null;
   disparoBmState = {};
   disparoGroupConfig = {};
+  disparoRotateTemplates = false;
   disparoTravarParamMap = [];
   document.getElementById('listStatus').textContent = 'Carregando contas…';
   document.getElementById('listPreviewWrap').classList.add('hidden');
   document.getElementById('disparoProgress').innerHTML = '';
   document.getElementById('travarProgress').innerHTML = '';
+  const rotateChk = document.getElementById('rotateTemplatesChk');
+  if (rotateChk) rotateChk.checked = false;
 
   const r = await fetch("{{ url_for('disparar.disparar_wabas') }}");
   const d = await r.json();
@@ -271,6 +286,34 @@ function bodyVarsOf(template) {
   return uniq.map(v => ({ label: v, name: allNumeric ? '' : v }));
 }
 
+function setRotateTemplates(on) {
+  disparoRotateTemplates = !!on;
+  renderAccountsList();
+  renderGroups();
+}
+
+function approvedTemplatesOf(wabaId) {
+  const st = disparoBmState[wabaId];
+  return ((st && st.templates) || []).filter(t => t.status === 'APPROVED');
+}
+
+// Templates this WABA will actually use, in send order.
+function cycleTemplatesFor(wabaId) {
+  const st = disparoBmState[wabaId];
+  if (disparoRotateTemplates) return approvedTemplatesOf(wabaId);
+  return (st && st.selectedTemplate) ? [st.selectedTemplate] : [];
+}
+
+// Wire payload: [{name, language, param_map}] — param_map is per-template, derived
+// from the shared column config for that template's var count.
+function templatesCycleFor(wabaId) {
+  return cycleTemplatesFor(wabaId).map(t => ({
+    name: t.name,
+    language: t.language,
+    param_map: paramMapFromConfig(t, disparoGroupConfig[bodyVarsOf(t).length] || []),
+  }));
+}
+
 function loadAndRenderDisparar() {
   const ids = Object.keys(DISPARO_ALL_WABAS);
   document.getElementById('accountsListContainer').innerHTML =
@@ -325,6 +368,18 @@ function buildAccountRow(wabaId) {
     tplOptions = approved.map(t => `<option value="${disparoEscapeHtml(t.name)}" ${st.selectedTemplate && st.selectedTemplate.name === t.name ? 'selected' : ''}>${disparoEscapeHtml(t.name)} · ${disparoEscapeHtml(t.category)}</option>`).join('');
   }
 
+  let badgeHtml;
+  if (disparoRotateTemplates) {
+    const n = approved.length;
+    badgeHtml = `<span class="text-[11px] px-2 py-1 rounded-full whitespace-nowrap ${n ? 'bg-emerald-900/40 text-emerald-300' : 'bg-amber-900/40 text-amber-300'}">
+      ${n ? (n === 1 ? '1 template em rodízio' : `${n} templates em rodízio`) : 'nenhum aprovado'}
+    </span>`;
+  } else {
+    badgeHtml = `<span class="text-[11px] px-2 py-1 rounded-full whitespace-nowrap ${varCount === null ? 'bg-zinc-800 text-zinc-500' : 'bg-emerald-900/40 text-emerald-300'}">
+      ${varCount === null ? '—' : (varCount === 1 ? '1 variável' : `${varCount} variáveis`)}
+    </span>`;
+  }
+
   row.innerHTML = `
     <div class="min-w-[120px] flex-1">
       <div class="text-sm font-medium truncate">${disparoEscapeHtml(w.name)}</div>
@@ -333,12 +388,10 @@ function buildAccountRow(wabaId) {
     <select class="phone-select px-2 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs w-36">
       ${w.phones.map(p => `<option value="${disparoEscapeHtml(p.phone_number_id)}">${disparoEscapeHtml(p.display)}</option>`).join('')}
     </select>
-    <select class="tpl-select px-2 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs flex-[2] min-w-[180px]">
+    <select class="tpl-select px-2 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs flex-[2] min-w-[180px]" ${disparoRotateTemplates ? 'disabled' : ''} style="${disparoRotateTemplates ? 'opacity:0.5' : ''}">
       ${tplOptions}
     </select>
-    <span class="text-[11px] px-2 py-1 rounded-full whitespace-nowrap ${varCount === null ? 'bg-zinc-800 text-zinc-500' : 'bg-emerald-900/40 text-emerald-300'}">
-      ${varCount === null ? '—' : (varCount === 1 ? '1 variável' : `${varCount} variáveis`)}
-    </span>
+    ${badgeHtml}
   `;
 
   row.querySelector('.phone-select').value = st.phoneNumberId;
@@ -358,24 +411,27 @@ function buildAccountRow(wabaId) {
 function disparoGroups() {
   const map = new Map(); // varCount -> [wabaId, ...]
   Object.keys(DISPARO_ALL_WABAS).forEach(id => {
-    const st = disparoBmState[id];
-    if (!st || !st.selectedTemplate) return;
-    const count = bodyVarsOf(st.selectedTemplate).length;
-    if (!map.has(count)) map.set(count, []);
-    map.get(count).push(id);
+    const counts = new Set(cycleTemplatesFor(id).map(t => bodyVarsOf(t).length));
+    counts.forEach(count => {
+      if (!map.has(count)) map.set(count, []);
+      map.get(count).push(id);
+    });
   });
   return map;
 }
 
-function paramMapFromConfig(template, configArr) {
-  return bodyVarsOf(template).map((v, i) => ({ label: v.label, name: v.name, column: (configArr[i] && configArr[i].column) || '' }));
+// Representative template for a var-count group — the first template in this
+// WABA's cycle whose body has exactly `varCount` variables.
+function repTemplateFor(varCount, wabaIds) {
+  for (const id of wabaIds) {
+    const tpl = cycleTemplatesFor(id).find(t => bodyVarsOf(t).length === varCount);
+    if (tpl) return tpl;
+  }
+  return null;
 }
 
-function paramMapFor(wabaId) {
-  const st = disparoBmState[wabaId];
-  if (!st || !st.selectedTemplate) return [];
-  const varCount = bodyVarsOf(st.selectedTemplate).length;
-  return paramMapFromConfig(st.selectedTemplate, disparoGroupConfig[varCount] || []);
+function paramMapFromConfig(template, configArr) {
+  return bodyVarsOf(template).map((v, i) => ({ label: v.label, name: v.name, column: (configArr[i] && configArr[i].column) || '' }));
 }
 
 function ensureGroupConfig(varCount) {
@@ -409,7 +465,7 @@ function renderGroups() {
 
 function buildGroupInputsBlock(varCount, wabaIds) {
   const configArr = ensureGroupConfig(varCount);
-  const repTemplate = disparoBmState[wabaIds[0]].selectedTemplate;
+  const repTemplate = repTemplateFor(varCount, wabaIds);
   const labels = bodyVarsOf(repTemplate);
   const names = wabaIds.map(id => DISPARO_ALL_WABAS[id].name).join(', ');
   const cols = (disparoListState && disparoListState.columns) || [];
@@ -451,14 +507,15 @@ function buildGroupInputsBlock(varCount, wabaIds) {
 
 function buildGroupPreviewBlock(varCount, wabaIds) {
   const configArr = ensureGroupConfig(varCount);
-  const repTemplate = disparoBmState[wabaIds[0]].selectedTemplate;
+  const repTemplate = repTemplateFor(varCount, wabaIds);
   const names = wabaIds.map(id => DISPARO_ALL_WABAS[id].name).join(', ');
+  const rotatePrefix = disparoRotateTemplates ? `Rodízio · ${cycleTemplatesFor(wabaIds[0]).length} templates · ` : '';
 
   const block = document.createElement('div');
   block.className = 'rounded-2xl border border-zinc-800 bg-zinc-900/30 p-4';
   block.id = `previewGroup-${varCount}`;
   block.innerHTML = `
-    <div class="text-[11px] text-zinc-500 mb-2 truncate">${disparoEscapeHtml(names)}</div>
+    <div class="text-[11px] text-zinc-500 mb-2 truncate">${disparoEscapeHtml(rotatePrefix + names)}</div>
     <div class="wa-preview-wrap flex justify-center"></div>
   `;
   renderWaPreviewInto(block.querySelector('.wa-preview-wrap'), repTemplate, paramMapFromConfig(repTemplate, configArr));
@@ -470,7 +527,7 @@ function updateGroupPreview(varCount) {
   if (!block) return;
   const wabaIds = disparoGroups().get(varCount);
   if (!wabaIds || !wabaIds.length) return;
-  const repTemplate = disparoBmState[wabaIds[0]].selectedTemplate;
+  const repTemplate = repTemplateFor(varCount, wabaIds);
   renderWaPreviewInto(block.querySelector('.wa-preview-wrap'), repTemplate, paramMapFromConfig(repTemplate, ensureGroupConfig(varCount)));
 }
 
@@ -539,7 +596,13 @@ function fireDisparar() {
   if (ids.length === 1) {
     const wabaId = ids[0];
     const st = disparoBmState[wabaId];
-    if (!st || !st.selectedTemplate) { alert('Selecione um template.'); return; }
+    const cycle = templatesCycleFor(wabaId);
+    if (disparoRotateTemplates) {
+      if (!cycle.length) { alert('Nenhum template aprovado nesta conta.'); return; }
+    } else if (!st || !st.selectedTemplate) {
+      alert('Selecione um template.'); return;
+    }
+    const first = cycle[0];
     fetch("{{ url_for('disparar.start_disparo') }}", {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -548,9 +611,10 @@ function fireDisparar() {
         phone_col: phoneCol,
         phone_number_id: st.phoneNumberId,
         token: DISPARO_ALL_WABAS[wabaId].token,
-        template_name: st.selectedTemplate.name,
-        template_language: st.selectedTemplate.language,
-        param_map: paramMapFor(wabaId),
+        template_name: first.name,
+        template_language: first.language,
+        param_map: first.param_map,
+        templates_cycle: cycle,
         max_workers: disparoSpeedValue,
         waba_id: wabaId,
       }),
@@ -562,14 +626,23 @@ function fireDisparar() {
     const wabasSpec = ids.map(id => {
       const w = DISPARO_ALL_WABAS[id];
       const st = disparoBmState[id];
+      const cycle = templatesCycleFor(id);
+      const first = cycle[0];
       return {
         waba_id: id, name: w.name, phone_number_id: st.phoneNumberId, token: w.token,
-        template_name: st.selectedTemplate ? st.selectedTemplate.name : '',
-        template_language: st.selectedTemplate ? st.selectedTemplate.language : 'en',
-        param_map: paramMapFor(id),
+        template_name: first ? first.name : '',
+        template_language: first ? first.language : 'en',
+        param_map: first ? first.param_map : [],
+        templates_cycle: cycle,
       };
     });
-    if (wabasSpec.some(w => !w.template_name)) { alert('Selecione um template para cada BM.'); return; }
+    const missing = wabasSpec.filter(w => !w.template_name);
+    if (missing.length) {
+      alert(disparoRotateTemplates
+        ? `Nenhum template aprovado para: ${missing.map(w => w.name).join(', ')}`
+        : 'Selecione um template para cada BM.');
+      return;
+    }
 
     fetch("{{ url_for('disparar.batch_start') }}", {
       method: 'POST',

@@ -74,6 +74,30 @@ def _wabas_with_phones(user_id: int) -> list:
     return result
 
 
+_MAX_CYCLE = 500
+
+
+def _sanitize_cycle(raw) -> list:
+    """Normalize the client's templates_cycle into [{name, language, param_map}].
+    Returns [] when absent/invalid so callers fall back to the scalar template."""
+    if not isinstance(raw, list):
+        return []
+    out = []
+    for item in raw[:_MAX_CYCLE]:
+        if not isinstance(item, dict):
+            continue
+        name = (item.get("name") or item.get("template_name") or "").strip()
+        if not name:
+            continue
+        pm = [p for p in (item.get("param_map") or []) if isinstance(p, dict)]
+        out.append({
+            "name": name,
+            "language": (item.get("language") or item.get("template_language") or "en").strip(),
+            "param_map": pm,
+        })
+    return out
+
+
 def _pick_connected_br_phone(phone_numbers: list) -> str:
     """Return the id of the first CONNECTED Brazilian (+55) number, or ''."""
     import re
@@ -172,6 +196,7 @@ def start_disparo():
     template_language   = (data.get("template_language") or "en").strip()
     param_map           = data.get("param_map", [])
     waba_id             = (data.get("waba_id") or "").strip()
+    templates_cycle     = _sanitize_cycle(data.get("templates_cycle"))
     _w = data.get("max_workers")
     max_workers = int(_w) if _w is not None else 10
     if max_workers != 0:
@@ -201,6 +226,7 @@ def start_disparo():
         waba_id=waba_id,
         has_header=True,
         preloaded_rows=entry["rows"],
+        templates_cycle=templates_cycle,
     )
     return jsonify({"job_id": job_id})
 
@@ -239,6 +265,7 @@ def batch_start():
             "template_name": w.get("template_name", ""),
             "template_language": w.get("template_language", "en"),
             "param_map": w.get("param_map", []),
+            "templates_cycle": _sanitize_cycle(w.get("templates_cycle")),
         }
         for w in wabas_spec
     ]
