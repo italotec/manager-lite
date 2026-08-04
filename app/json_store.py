@@ -75,6 +75,11 @@ def save_user_bms(user_id: int, data: Dict[str, Any]) -> None:
     finally:
         lock_file.close()
 
+def serial_sort_key(value) -> tuple:
+    """Sort key for AdsPower serial numbers: highest first, blank/non-numeric last."""
+    s = str(value or "").strip()
+    return (0, -int(s)) if s.isdigit() else (1, 0)
+
 def upsert_waba(user_id: int, waba_id: str, token: str, adspower_profile_id: str = "",
                 business_manager_id: str = "", payment_account_id: str = "",
                 serial_number: str = "") -> None:

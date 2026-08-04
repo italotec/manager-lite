@@ -14,6 +14,7 @@ from .. import db
 from ..models import VerificarProfile, PartnerCredential, get_bsp_names
 from .agent_ws import is_agent_connected, push_to_agent
 from ..config import Config
+from ..json_store import serial_sort_key
 
 bp = Blueprint("verificar", __name__, url_prefix="/verificar")
 
@@ -27,7 +28,8 @@ def page():
 @bp.route("/rows")
 @login_required
 def rows():
-    profiles = VerificarProfile.query.filter_by(user_id=current_user.id).order_by(VerificarProfile.name).all()
+    profiles = VerificarProfile.query.filter_by(user_id=current_user.id).all()
+    profiles.sort(key=lambda p: (*serial_sort_key(p.serial_number), (p.name or "").lower()))
     return jsonify({"rows": [p.to_dict() for p in profiles]})
 
 
@@ -85,6 +87,7 @@ def link():
             "business_id": profile.business_id or "",
             "waba_id": profile.waba_id or "",
             "waba_name": profile.waba_name or "",
+            "serial_number": profile.serial_number or "",
             "partner_business_id": partner_business_id,
             "meta_token": meta_token,
             "known_partners": known_partners,

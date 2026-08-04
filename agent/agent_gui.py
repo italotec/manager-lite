@@ -39,7 +39,7 @@ from config import DEFAULT_SERVER_URL, DEFAULT_API_KEY
 def _detect_adspower() -> str:
     import requests as _req
     for base in (
-        "http://local.adspower.net:50365",
+        "http://local.adspower.net:15852",
         "http://127.0.0.1:50365",
         "http://local.adspower.net:50325",
         "http://127.0.0.1:50325",

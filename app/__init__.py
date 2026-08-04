@@ -110,6 +110,10 @@ def create_app():
             db.session.execute(db.text(
                 "ALTER TABLE verificar_profile ADD COLUMN pending_partner_name VARCHAR(255)"))
             db.session.commit()
+        if "serial_number" not in vp_cols:
+            db.session.execute(db.text(
+                "ALTER TABLE verificar_profile ADD COLUMN serial_number VARCHAR(32)"))
+            db.session.commit()
 
         # Recover DisparoJobs left "running"/"queued" by a previous restart. The
         # Disparou stamp is only written by _finish() at job end, so a job whose

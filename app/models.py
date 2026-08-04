@@ -176,9 +176,10 @@ class VerificarProfile(db.Model):
     remark     = db.Column(db.Text,        default="", nullable=False)
     synced_at  = db.Column(db.DateTime,    default=_now_sp, nullable=False)
 
-    business_id = db.Column(db.String(64),  nullable=True)
-    waba_id     = db.Column(db.String(64),  nullable=True)
-    waba_name   = db.Column(db.String(255), nullable=True)
+    business_id    = db.Column(db.String(64),  nullable=True)
+    waba_id        = db.Column(db.String(64),  nullable=True)
+    waba_name      = db.Column(db.String(255), nullable=True)
+    serial_number  = db.Column(db.String(32),  nullable=True)
 
     linking_at                 = db.Column(db.DateTime,   nullable=True)
     shared_to_partner_at       = db.Column(db.DateTime,   nullable=True)
@@ -202,6 +203,7 @@ class VerificarProfile(db.Model):
             "waba_id": self.waba_id,
             "waba_name": self.waba_name,
             "business_id": self.business_id,
+            "serial_number": self.serial_number or "",
             "linking_at": bool(self.linking_at),
             "shared_to_partner_at": bool(self.shared_to_partner_at),
             "registered_with_manager_at": bool(self.registered_with_manager_at),

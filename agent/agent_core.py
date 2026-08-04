@@ -227,6 +227,7 @@ def _execute_link_waba_sync(msg: dict, log=print, emit=None) -> dict:
     business_id      = msg.get("business_id") or ""
     waba_id          = msg.get("waba_id") or ""
     waba_name        = msg.get("waba_name") or ""
+    serial_number    = str(msg.get("serial_number") or "")
     partner_biz_id   = msg["partner_business_id"]
     meta_token       = msg["meta_token"]
     manager_api_key  = msg["manager_api_key"]
@@ -414,11 +415,11 @@ def _execute_link_waba_sync(msg: dict, log=print, emit=None) -> dict:
                         log(f"[LINK {profile_id}] [{idx}/{total}] WABA compartilhada com partner={partner_biz_id}")
 
                     try:
-                        serial_number = ""
-                        try:
-                            serial_number = str((_client.get_profile(profile_id) or {}).get("serial_number") or "")
-                        except Exception:
-                            pass
+                        if not serial_number:
+                            try:
+                                serial_number = str((_client.get_profile(profile_id) or {}).get("serial_number") or "")
+                            except Exception:
+                                pass
 
                         reg = register_business_manager(
                             base_url=manager_base_url,
@@ -544,10 +545,11 @@ async def _sync_profiles(outbox: asyncio.Queue, log=print):
             profiles = []
             for p in _client.list_profiles(group_id=gid):
                 profiles.append({
-                    "profile_id": p["user_id"],
-                    "name":       p.get("name", ""),
-                    "group_name": _cfg.VERIFICAR_GROUP_NAME,
-                    "remark":     p.get("remark", ""),
+                    "profile_id":    p["user_id"],
+                    "name":          p.get("name", ""),
+                    "group_name":    _cfg.VERIFICAR_GROUP_NAME,
+                    "remark":        p.get("remark", ""),
+                    "serial_number": str(p.get("serial_number") or ""),
                 })
             return profiles
 

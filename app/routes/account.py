@@ -51,6 +51,7 @@ def _sweep_pending_wabas(user, business_id: str, token: str) -> int:
         result = register_waba_for_user(
             user, profile.waba_id, token,
             adspower_profile_id=profile.profile_id,
+            serial_number=profile.serial_number or "",
         )
         if result.get("ok"):
             profile.registered_with_manager_at = datetime.utcnow()

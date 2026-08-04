@@ -18,6 +18,7 @@ from ..json_store import (
     save_waba_remarks,
     import_wabas,
     delete_wabas as delete_wabas_store,
+    serial_sort_key,
 )
 from ..services.sync_service import (
     start_sync_job,
@@ -74,6 +75,8 @@ def dashboard():
             "remarks": data.get("remarks") or "",
             "messaging_limit_tier": snap.get("messaging_limit_tier"),
         })
+
+    rows.sort(key=lambda r: (*serial_sort_key(r["serial_number"]), (r["waba_name"] or "").lower()))
 
     return render_template("dashboard.html", title="Manager Lite", rows=rows)
 

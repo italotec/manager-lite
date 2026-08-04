@@ -22,6 +22,7 @@
         <th class="py-3 pl-4 pr-2 text-left w-8">
           <input type="checkbox" id="selectAll" class="w-4 h-4 accent-cyan-500" onchange="toggleAll(this.checked)">
         </th>
+        <th class="py-3 px-3 text-left">Nº</th>
         <th class="py-3 px-3 text-left">Perfil</th>
         <th class="py-3 px-3 text-left">Grupo</th>
         <th class="py-3 px-3 text-left">WABA</th>
@@ -103,6 +104,7 @@ function renderRows() {
                ${_selected.has(row.profile_id) ? "checked" : ""}
                onchange="onRowCheck('${row.profile_id}', this.checked)">
       </td>
+      <td class="py-3 px-3 text-xs text-zinc-400 font-mono">${escapeHtml(row.serial_number) || "—"}</td>
       <td class="py-3 px-3 text-zinc-300">${escapeHtml(row.name) || "—"}</td>
       <td class="py-3 px-3 text-zinc-400">${escapeHtml(row.group_name) || "—"}</td>
       <td class="py-3 px-3 font-mono text-zinc-400 text-xs">${escapeHtml(row.waba_id) || "—"}</td>

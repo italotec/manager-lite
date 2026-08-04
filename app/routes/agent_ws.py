@@ -139,11 +139,12 @@ def _handle_profiles_push(app, user_id: int, profiles: list):
             if profile is None:
                 profile = VerificarProfile(profile_id=p["profile_id"], user_id=user_id)
                 db.session.add(profile)
-            profile.user_id    = user_id
-            profile.name       = p.get("name", "")
-            profile.group_name = p.get("group_name", "")
-            profile.remark     = p.get("remark", "")
-            profile.synced_at  = datetime.utcnow()
+            profile.user_id       = user_id
+            profile.name          = p.get("name", "")
+            profile.group_name    = p.get("group_name", "")
+            profile.remark        = p.get("remark", "")
+            profile.serial_number = str(p.get("serial_number") or "")
+            profile.synced_at     = datetime.utcnow()
 
         existing = VerificarProfile.query.filter_by(user_id=user_id).all()
         stale = [p for p in existing if p.profile_id not in incoming_ids]
