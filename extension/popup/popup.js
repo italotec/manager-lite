@@ -17,17 +17,34 @@ const els = {
   btnRefresh: document.getElementById("btnRefresh"),
   steps: document.getElementById("steps"),
   toast: document.getElementById("toast"),
+  btnManualProfile: document.getElementById("btnManualProfile"),
+  manualForm: document.getElementById("manualProfileForm"),
+  manualProfileId: document.getElementById("manualProfileId"),
+  manualSerialNumber: document.getElementById("manualSerialNumber"),
+  btnManualSave: document.getElementById("btnManualSave"),
+  btnManualCancel: document.getElementById("btnManualCancel"),
+  btnManualRemove: document.getElementById("btnManualRemove"),
 };
 
-let state = {
-  tabId: null,
-  businessId: null,
-  wabaId: null,
-  profile: null,
-  config: null,
-  restricted: null, // true | false | null (unknown)
-  tierEnum: null,   // "TIER_10K" etc, same vocabulary as snapshot.messaging_limit_tier
-};
+let state = {};
+
+function resetState() {
+  state = {
+    tabId: state.tabId ?? null,
+    businessId: null,
+    wabaId: null,
+    profile: null,
+    config: null,
+    restricted: null, // true | false | null (unknown)
+    tierEnum: null,   // "TIER_10K" etc, same vocabulary as snapshot.messaging_limit_tier
+    _resolvingBusiness: false,
+  };
+}
+resetState();
+
+// A tab we've already tried injecting into this popup session — never retry more than once, so a
+// genuinely broken page can't loop forever.
+const injectedTabs = new Set();
 
 // Mirrors the dashboard's own label logic — app/templates/dashboard.html:544.
 function tierLabel(tierEnum) {
@@ -35,7 +52,40 @@ function tierLabel(tierEnum) {
   return tierEnum === "TIER_UNLIMITED" ? "∞" : tierEnum.replace("TIER_", "");
 }
 
-function sendToTab(tabId, msg) {
+// The exact response shape (data.WhatsAppBusinessMessagingLimitInfo.current_message_limit_tier) is one
+// GraphQL alias away from breaking if Meta renames a field. Walking for the key itself survives that.
+function findTierEnum(node) {
+  if (!node || typeof node !== "object") return null;
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const found = findTierEnum(item);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (typeof node.current_message_limit_tier === "string") return node.current_message_limit_tier;
+  for (const v of Object.values(node)) {
+    if (v && typeof v === "object") {
+      const found = findTierEnum(v);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function withTimeout(promise, ms, timeoutError) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) { settled = true; resolve({ ok: false, error: timeoutError }); }
+    }, ms);
+    promise.then((r) => {
+      if (!settled) { settled = true; clearTimeout(timer); resolve(r); }
+    });
+  });
+}
+
+function _sendToTabRaw(tabId, msg) {
   return new Promise((resolve) => {
     chrome.tabs.sendMessage(tabId, msg, (resp) => {
       if (chrome.runtime.lastError) {
@@ -47,7 +97,7 @@ function sendToTab(tabId, msg) {
   });
 }
 
-function sendToBg(msg) {
+function _sendToBgRaw(msg) {
   return new Promise((resolve) => {
     chrome.runtime.sendMessage(msg, (resp) => {
       if (chrome.runtime.lastError) {
@@ -57,6 +107,43 @@ function sendToBg(msg) {
       }
     });
   });
+}
+
+async function injectContentScripts(tabId) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId }, files: ["lib/queries.js", "content/bridge.js"], world: "MAIN",
+    });
+    await chrome.scripting.executeScript({
+      target: { tabId }, files: ["content/relay.js"], world: "ISOLATED",
+    });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// The manifest only auto-injects content scripts into navigations that happen *after* the extension
+// loads — a tab that was already open on business.facebook.com when the extension was installed or
+// reloaded never gets them, and every message here would otherwise hang until the 25s timeout with no
+// way to recover short of a manual page reload. Detect that one specific failure and self-heal once.
+async function sendToTab(tabId, msg, timeoutMs = 25000) {
+  let resp = await withTimeout(_sendToTabRaw(tabId, msg), timeoutMs, "timeout aguardando resposta da página");
+  const looksMissing = resp && resp.error &&
+    /Receiving end does not exist|Could not establish connection/i.test(resp.error);
+  if (looksMissing && !injectedTabs.has(tabId)) {
+    injectedTabs.add(tabId);
+    const injected = await injectContentScripts(tabId);
+    if (injected) {
+      await new Promise((r) => setTimeout(r, 300)); // let bridge.js's first pollContext() land
+      resp = await withTimeout(_sendToTabRaw(tabId, msg), timeoutMs, "timeout aguardando resposta da página");
+    }
+  }
+  return resp;
+}
+
+function sendToBg(msg, timeoutMs = 8000) {
+  return withTimeout(_sendToBgRaw(msg), timeoutMs, "timeout aguardando resposta da extensão");
 }
 
 function showToast(msg, ok) {
@@ -78,6 +165,16 @@ function refreshLinkButton() {
   els.btnLink.disabled = !ready;
 }
 
+function renderProfileRow() {
+  if (state.profile && state.profile.profileId) {
+    const manualTag = state.profile.manual ? " (manual)" : "";
+    els.profile.textContent =
+      `${state.profile.profileId}${state.profile.serialNumber ? " · nº " + state.profile.serialNumber : ""}${manualTag}`;
+  } else {
+    els.profile.textContent = "não detectado";
+  }
+}
+
 function extractWabasFromListResponse(data) {
   const out = [];
   const seen = new Set();
@@ -97,67 +194,19 @@ function extractWabasFromListResponse(data) {
   return out;
 }
 
-async function loadContext() {
-  const ctxResp = await sendToTab(state.tabId, { type: "ml-get-context" });
-  const ctx = (ctxResp && ctxResp.context) || {};
-  state.businessId = ctx.businessId || null;
-  state.wabaId = ctx.wabaId || null;
-
-  const [profResp, cfgResp] = await Promise.all([
-    sendToBg({ type: "ml-detect-profile" }),
-    sendToBg({ type: "ml-get-config" }),
-  ]);
-  state.profile = profResp.info || null;
-  state.config = cfgResp;
-
-  if (!state.businessId && state.profile && state.profile.businessIdHint) {
-    state.businessId = state.profile.businessIdHint;
-  }
-
-  els.businessId.textContent = state.businessId || "—";
-  els.wabaId.textContent = state.wabaId || "verificando…";
-  els.profile.textContent = state.profile
-    ? `${state.profile.profileId}${state.profile.serialNumber ? " · nº " + state.profile.serialNumber : ""}`
-    : "não detectado";
-
-  if (!state.businessId) {
-    setRestrictionUI("idle", "Sem business_id", "Abra uma página de WABA com business_id na URL.");
-    refreshLinkButton();
-    return;
-  }
-
-  if (!state.wabaId) {
-    const listResp = await sendToTab(state.tabId, {
-      type: "ml-run-query", key: "listWabas", ctx: { businessId: state.businessId },
-    });
-    const wabas = listResp.ok && listResp.result.ok
-      ? extractWabasFromListResponse(listResp.result.data)
-      : [];
-    if (wabas.length) {
-      state.wabaId = wabas[0].id;
-      els.wabaId.textContent = state.wabaId;
-    } else {
-      els.wabaId.textContent = "—";
-    }
-  }
-
-  if (state.config && state.config.ok === false) {
-    showToast(state.config.error || "Não foi possível carregar a configuração do Manager Lite.", false);
-  }
-
-  await Promise.all([checkRestriction(), loadTier()]);
-  refreshLinkButton();
-}
-
-async function loadTier() {
-  if (!state.businessId || !state.wabaId) return;
-  const resp = await sendToTab(state.tabId, {
-    type: "ml-run-query", key: "limits", ctx: { businessId: state.businessId, wabaId: state.wabaId },
+async function resolveWabaId() {
+  const listResp = await sendToTab(state.tabId, {
+    type: "ml-run-query", key: "listWabas", ctx: { businessId: state.businessId },
   });
-  const info = resp.ok && resp.result.ok && resp.result.data &&
-    resp.result.data.WhatsAppBusinessMessagingLimitInfo;
-  state.tierEnum = (info && info.current_message_limit_tier) || null;
-  els.tier.textContent = tierLabel(state.tierEnum);
+  const wabas = listResp.ok && listResp.result && listResp.result.ok
+    ? extractWabasFromListResponse(listResp.result.data)
+    : [];
+  if (wabas.length) {
+    state.wabaId = wabas[0].id;
+    els.wabaId.textContent = state.wabaId;
+  } else {
+    els.wabaId.textContent = "—";
+  }
 }
 
 async function checkRestriction() {
@@ -166,7 +215,15 @@ async function checkRestriction() {
   const resp = await sendToTab(state.tabId, {
     type: "ml-run-query", key: "restriction", ctx: { businessId: state.businessId },
   });
-  const result = resp.ok ? resp.result : null;
+
+  if (!resp.ok) {
+    state.restricted = null;
+    setRestrictionUI("bad", "Não foi possível acessar a página", "Recarregue a aba do Facebook e tente de novo.");
+    refreshLinkButton();
+    return;
+  }
+
+  const result = resp.result;
   const inner = result && result.ok && result.data && result.data.data;
   if (inner && "isRestricted" in inner) {
     state.restricted = !!inner.isRestricted;
@@ -180,6 +237,80 @@ async function checkRestriction() {
     setRestrictionUI("warn", "Não foi possível confirmar", "Tente atualizar. O vínculo seguirá mesmo assim.");
   }
   refreshLinkButton();
+}
+
+async function loadTier() {
+  if (!state.businessId || !state.wabaId) return;
+  const resp = await sendToTab(state.tabId, {
+    type: "ml-run-query", key: "limits", ctx: { businessId: state.businessId, wabaId: state.wabaId },
+  });
+  const data = resp.ok && resp.result && resp.result.ok ? resp.result.data : null;
+  state.tierEnum = findTierEnum(data);
+  els.tier.textContent = tierLabel(state.tierEnum);
+}
+
+// Restriction + tier only need the page's own session — never gated on Manager Lite or AdsPower being
+// reachable, so a config/profile failure degrades the extension instead of freezing it.
+async function resolveBusinessContext() {
+  if (state._resolvingBusiness) return;
+  state._resolvingBusiness = true;
+  const restrictionPromise = checkRestriction();
+  if (!state.wabaId) await resolveWabaId();
+  const tierPromise = loadTier();
+  await Promise.all([restrictionPromise, tierPromise]);
+  state._resolvingBusiness = false;
+  refreshLinkButton();
+}
+
+async function loadProfileAndConfig() {
+  els.profile.textContent = "detectando…";
+  const [profResp, cfgResp] = await Promise.all([
+    sendToBg({ type: "ml-detect-profile" }),
+    sendToBg({ type: "ml-get-config" }),
+  ]);
+  state.profile = profResp.info || null;
+  state.config = cfgResp;
+  renderProfileRow();
+
+  if (!state.businessId && state.profile && state.profile.businessIdHint) {
+    state.businessId = state.profile.businessIdHint;
+    els.businessId.textContent = state.businessId;
+    els.wabaId.textContent = state.wabaId || "verificando…";
+    await resolveBusinessContext();
+  }
+
+  if (state.config && state.config.ok === false) {
+    showToast(state.config.error || "Não foi possível carregar a configuração do Manager Lite.", false);
+  }
+  refreshLinkButton();
+}
+
+async function loadContext() {
+  setRestrictionUI("checking", "Verificando…", "");
+
+  // Fire-and-forget: profile/config never gate the restriction/tier check below.
+  loadProfileAndConfig();
+
+  const ctxResp = await sendToTab(state.tabId, { type: "ml-get-context" });
+  if (!ctxResp.ok) {
+    setRestrictionUI("bad", "Não foi possível acessar a página", "Recarregue a aba do Facebook e tente de novo.");
+    els.wabaId.textContent = "—";
+    refreshLinkButton();
+    return;
+  }
+
+  const ctx = ctxResp.context || {};
+  state.businessId = ctx.businessId || null;
+  state.wabaId = ctx.wabaId || null;
+  els.businessId.textContent = state.businessId || "—";
+  els.wabaId.textContent = state.wabaId || (state.businessId ? "verificando…" : "—");
+
+  if (state.businessId) {
+    await resolveBusinessContext();
+  } else {
+    setRestrictionUI("idle", "Sem business_id", "Abra uma página de WABA com business_id na URL.");
+    refreshLinkButton();
+  }
 }
 
 function renderSteps(steps) {
@@ -206,7 +337,7 @@ async function runLinkFlow() {
   const restrictionResp = await sendToTab(state.tabId, {
     type: "ml-run-query", key: "restriction", ctx: { businessId: state.businessId },
   });
-  const rInner = restrictionResp.ok && restrictionResp.result.ok &&
+  const rInner = restrictionResp.ok && restrictionResp.result && restrictionResp.result.ok &&
     restrictionResp.result.data && restrictionResp.result.data.data;
   if (rInner && rInner.isRestricted === true) {
     steps[0].status = "error";
@@ -225,7 +356,7 @@ async function runLinkFlow() {
     type: "ml-run-query", key: "sharePartner",
     ctx: { businessId: state.businessId, wabaId: state.wabaId, partnerBusinessId: state.config.partner_business_id },
   });
-  const shareConn = shareResp.ok && shareResp.result.ok && shareResp.result.data &&
+  const shareConn = shareResp.ok && shareResp.result && shareResp.result.ok && shareResp.result.data &&
     shareResp.result.data.business_settings_add_partner_to_assets_connection;
   const shareOk = !!(shareConn && shareConn.results && shareConn.results.some((r) =>
     r.results && r.results.some((rr) => rr.result_type === "SUCCESS")));
@@ -263,6 +394,42 @@ async function runLinkFlow() {
   refreshLinkButton();
 }
 
+// ── Manual AdsPower profile override ─────────────────────────────────────────
+
+els.btnManualProfile.addEventListener("click", () => {
+  if (state.profile) {
+    els.manualProfileId.value = state.profile.profileId || "";
+    els.manualSerialNumber.value = state.profile.serialNumber || "";
+  }
+  els.manualForm.classList.toggle("hidden");
+});
+
+els.btnManualCancel.addEventListener("click", () => els.manualForm.classList.add("hidden"));
+
+els.btnManualSave.addEventListener("click", async () => {
+  const profileId = els.manualProfileId.value.trim();
+  if (!profileId) { showToast("Informe o ID do perfil.", false); return; }
+  const resp = await sendToBg({ type: "ml-set-manual-profile", profileId, serialNumber: els.manualSerialNumber.value.trim() });
+  if (resp.ok) {
+    state.profile = resp.info;
+    renderProfileRow();
+    els.manualForm.classList.add("hidden");
+    refreshLinkButton();
+    showToast("Perfil salvo para este navegador.", true);
+  } else {
+    showToast(resp.error || "Falha ao salvar.", false);
+  }
+});
+
+els.btnManualRemove.addEventListener("click", async () => {
+  await sendToBg({ type: "ml-clear-manual-profile" });
+  els.manualForm.classList.add("hidden");
+  await loadProfileAndConfig();
+  showToast("Perfil manual removido.", true);
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+
 async function init() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab || !tab.url || !/^https:\/\/business\.facebook\.com\//.test(tab.url)) {
@@ -270,16 +437,18 @@ async function init() {
     els.main.classList.add("hidden");
     return;
   }
+  resetState();
   state.tabId = tab.id;
   els.noContext.classList.add("hidden");
   els.main.classList.remove("hidden");
+  els.businessId.textContent = "—";
+  els.wabaId.textContent = "—";
+  els.tier.textContent = "—";
+  els.steps.classList.add("hidden");
   await loadContext();
 }
 
-els.btnRefresh.addEventListener("click", () => {
-  els.steps.classList.add("hidden");
-  init();
-});
+els.btnRefresh.addEventListener("click", init);
 els.btnLink.addEventListener("click", runLinkFlow);
 
 init();

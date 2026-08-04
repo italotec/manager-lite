@@ -34,8 +34,10 @@ def download():
                     continue
                 zf.write(full, rel)
 
+        # `self`, not `window` — this file is loaded via importScripts() inside the extension's
+        # service worker (background.js), which has no `window` global.
         config_js = (
-            "window.__ML_CONFIG__ = {\n"
+            "self.__ML_CONFIG__ = {\n"
             f"  apiKey: {json.dumps(current_user.api_key or '')},\n"
             f"  baseUrl: {json.dumps(base_url)}\n"
             "};\n"

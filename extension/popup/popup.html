@@ -40,6 +40,19 @@
       </div>
     </div>
 
+    <div class="ml-manual-toggle">
+      <button id="btnManualProfile" class="ml-link-btn" type="button">Definir perfil manualmente</button>
+    </div>
+    <div id="manualProfileForm" class="ml-manual-form hidden">
+      <input id="manualProfileId" class="ml-input" placeholder="ID do perfil AdsPower (ex: k1fbfn6u)" />
+      <input id="manualSerialNumber" class="ml-input" placeholder="Nº de série (opcional)" />
+      <div class="ml-manual-actions">
+        <button id="btnManualSave" class="ml-btn-secondary" type="button">Salvar</button>
+        <button id="btnManualRemove" class="ml-btn-ghost" type="button">Remover</button>
+        <button id="btnManualCancel" class="ml-btn-ghost" type="button">Cancelar</button>
+      </div>
+    </div>
+
     <div id="restrictionCard" class="ml-status-card ml-status-idle">
       <span class="ml-dot"></span>
       <div>
