@@ -10,8 +10,11 @@ Call init(adspower_client) once before connect_loop().
 """
 import asyncio
 import json
+import os
 import ssl
+import sys
 import threading
+from pathlib import Path
 
 import certifi
 import websockets
@@ -36,6 +39,48 @@ def init(adspower_client):
     """Call once from agent_gui.py before connecting."""
     global _client
     _client = adspower_client
+
+
+# ── Playwright driver permissions (POSIX only) ────────────────────────────────
+
+_driver_checked = False
+
+
+def ensure_driver_executable(log=print) -> None:
+    """Restore the execute bit on Playwright's bundled `node` driver.
+
+    PyInstaller collects the driver as *data* (see the .spec files), and the
+    GitHub Actions artifact zip drops Unix mode bits entirely — so the frozen
+    macOS app can ship a `node` that can't be exec'd, and every
+    sync_playwright() then dies before it does any work with
+    "[Errno 13] Permission denied: .../playwright/driver/node".
+
+    Idempotent, and a no-op on Windows, where there is no execute bit and the
+    .exe build is unaffected.
+    """
+    global _driver_checked
+    if _driver_checked or os.name == "nt":
+        return
+    _driver_checked = True
+    try:
+        import playwright
+        candidates = []
+        if getattr(playwright, "__file__", None):
+            candidates.append(Path(playwright.__file__).parent / "driver" / "node")
+        # Frozen builds: _MEIPASS is Contents/Frameworks inside the .app.
+        if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+            candidates.append(Path(sys._MEIPASS) / "playwright" / "driver" / "node")
+
+        for driver in candidates:
+            if not driver.exists():
+                continue
+            mode = driver.stat().st_mode
+            if mode & 0o111:
+                continue
+            driver.chmod(mode | 0o111)
+            log(f"[AGENT] Permissão de execução restaurada em {driver}")
+    except Exception as exc:
+        log(f"[AGENT] Não foi possível ajustar a permissão do driver Playwright: {exc}")
 
 
 # ── Card-add handler ───────────────────────────────────────────────────────────
@@ -917,6 +962,7 @@ async def connect_loop(
     stop: asyncio.Event | None = None,
 ):
     """Maintain a single persistent WebSocket connection with auto-reconnect."""
+    ensure_driver_executable(log)
     backoff = 5.0
     last_failure_repr = ""
 
