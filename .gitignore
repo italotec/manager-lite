@@ -4,6 +4,8 @@ __pycache__/
 *.log
 instance/
 .mcp.json
+.env
+*.env
 
 # Local card-adding agent (agent/)
 agent/.env

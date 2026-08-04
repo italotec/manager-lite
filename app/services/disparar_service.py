@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import csv
+import re
 import asyncio
 import threading
 import time
@@ -39,6 +40,18 @@ def _flag_erro_generic_if_needed(user_id: int, waba_id: str, state: dict, msg: s
 
 
 _tls = threading.local()
+
+_VT = "\x0b"
+# Meta rejects \n and \t in template params (#132018) but renders U+000B as a line
+# break. A spreadsheet cannot store a VT (XML forbids it), so every break form the
+# user can actually type has to be translated here, at the last moment before send.
+_BREAK_RE = re.compile(r"_x000B_|\\r\\n|\\[nr]|\r\n|[\r\n]")
+
+
+def _to_vt(value: str) -> str:
+    if not value:
+        return value
+    return _BREAK_RE.sub(_VT, value)
 
 
 def _get_session() -> requests.Session:
@@ -314,7 +327,7 @@ async def _run_async_jobs(state, pending, phone_col, phone_number_id, token,
                 tpl = cycle[idx % n_cycle]
                 params = [
                     {"name": pm.get("name", ""),
-                     "value": str(row.get(pm.get("column", ""), "")).strip()}
+                     "value": _to_vt(str(row.get(pm.get("column", ""), "")).strip())}
                     for pm in tpl["param_map"]
                 ]
                 success, msg = await _send_template_async(
@@ -493,7 +506,7 @@ def _run_disparo(app, job_id: int, user_id: int,
         tpl = cycle[idx % n_cycle]
         params = [
             {"name": pm.get("name", ""),
-             "value": str(row.get(pm.get("column", ""), "")).strip()}
+             "value": _to_vt(str(row.get(pm.get("column", ""), "")).strip())}
             for pm in tpl["param_map"]
         ]
         success, msg = _send_template(
