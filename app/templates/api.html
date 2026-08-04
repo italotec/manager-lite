@@ -46,6 +46,31 @@
     </div>
   </div>
 
+  {# ── Extension card ── #}
+  <div class="rounded-2xl border border-zinc-800 bg-zinc-900/30 p-5 space-y-3">
+    <div class="text-sm font-semibold">Extensão — vincular WABA no navegador</div>
+    <div class="text-xs text-zinc-500">
+      Verifica se o Business Manager está restrito e, com um clique, adiciona o BM parceiro e registra a
+      WABA no Manager Lite (waba_id, token, perfil AdsPower, nº de série e business id) direto de dentro
+      do <code class="text-zinc-300">business.facebook.com</code>. Sua chave de API já vem embutida no
+      arquivo — não precisa configurar nada depois de instalar.
+    </div>
+    <a href="{{ url_for('extension.download') }}"
+       class="inline-block px-4 py-2 rounded-xl bg-indigo-700 hover:bg-indigo-600 text-sm font-semibold">
+      Baixar extensão
+    </a>
+    <div class="text-xs text-zinc-500 pt-2 border-t border-zinc-800 mt-1 space-y-1">
+      <div class="font-semibold text-zinc-400">Instalar em todos os perfis do AdsPower:</div>
+      <ol class="list-decimal list-inside space-y-0.5">
+        <li>Baixe o .zip acima e descompacte em uma pasta.</li>
+        <li>No AdsPower, abra <b>Extensões</b> → <b>Minhas extensões</b> → <b>Carregar extensão local</b>.</li>
+        <li>Selecione a pasta descompactada e habilite-a para os perfis desejados.</li>
+        <li>A extensão fica disponível em todos esses perfis, já autenticada com sua chave.</li>
+      </ol>
+      <div>Mudou o BM parceiro ou o token em <b>Minha Conta</b>? Nada a refazer — a extensão busca esses dados a cada uso.</div>
+    </div>
+  </div>
+
   {# ── Quick-start ── #}
   <div class="rounded-2xl border border-zinc-800 bg-zinc-900/30 p-5">
     <div class="text-sm font-semibold mb-3">Exemplo rápido</div>

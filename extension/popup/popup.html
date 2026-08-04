@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="popup.css" />
+  <title>Manager Lite — WABA</title>
+</head>
+<body>
+  <div class="ml-header">
+    <div class="ml-mark">ML</div>
+    <div class="ml-title">
+      <div class="ml-name">Manager Lite</div>
+      <div class="ml-tag">vincular WABA</div>
+    </div>
+    <button id="btnRefresh" class="ml-icon-btn" title="Atualizar">&#8635;</button>
+  </div>
+
+  <div id="viewNoContext" class="ml-empty hidden">
+    Abra uma página de WABA em
+    <span class="ml-mono">business.facebook.com</span> para usar a extensão.
+  </div>
+
+  <div id="viewMain" class="hidden">
+    <div class="ml-rows">
+      <div class="ml-row">
+        <span class="ml-k">BM</span>
+        <span class="ml-v ml-mono" id="fBusinessId">—</span>
+      </div>
+      <div class="ml-row">
+        <span class="ml-k">WABA</span>
+        <span class="ml-v ml-mono" id="fWabaId">—</span>
+      </div>
+      <div class="ml-row">
+        <span class="ml-k">Perfil</span>
+        <span class="ml-v ml-mono" id="fProfile">—</span>
+      </div>
+      <div class="ml-row">
+        <span class="ml-k">Limite de envio</span>
+        <span class="ml-v ml-mono" id="fTier">—</span>
+      </div>
+    </div>
+
+    <div id="restrictionCard" class="ml-status-card ml-status-idle">
+      <span class="ml-dot"></span>
+      <div>
+        <div id="restrictionTitle" class="ml-status-title">Verificando…</div>
+        <div id="restrictionDetail" class="ml-status-detail"></div>
+      </div>
+    </div>
+
+    <button id="btnLink" class="ml-btn-primary" disabled>Vincular ao Manager Lite</button>
+
+    <div id="steps" class="ml-steps hidden"></div>
+  </div>
+
+  <div id="toast" class="ml-toast hidden"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -35,6 +35,7 @@ def create_app():
     from .routes.agent_ws import bp as agent_ws_bp, handle_ws as agent_handle_ws
     from .routes.waba_detail import bp as waba_detail_bp
     from .routes.webhook import bp as webhook_bp
+    from .routes.extension_bp import bp as extension_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(wabas_bp)
@@ -53,6 +54,7 @@ def create_app():
     app.register_blueprint(agent_ws_bp)
     app.register_blueprint(waba_detail_bp)
     app.register_blueprint(webhook_bp)
+    app.register_blueprint(extension_bp)
 
     sock.route("/agent/ws")(agent_handle_ws)
 

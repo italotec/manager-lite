@@ -112,7 +112,8 @@ def upsert_waba(user_id: int, waba_id: str, token: str, adspower_profile_id: str
         save_user_bms(user_id, data)
 
 def update_waba(user_id: int, old_waba_id: str, new_waba_id: str, token: str,
-                adspower_profile_id: str = "", serial_number: str = "") -> tuple:
+                adspower_profile_id: str = "", serial_number: str = "",
+                business_manager_id: str = "") -> tuple:
     """Edit an existing WABA in place, re-keying if the WABA ID changed.
 
     Returns (ok, err). Preserves snapshot/remarks/templates/origin."""
@@ -131,6 +132,7 @@ def update_waba(user_id: int, old_waba_id: str, new_waba_id: str, token: str,
         entry["token"] = token
         entry["adspower_profile_id"] = adspower_profile_id
         entry["serial_number"] = serial_number
+        entry["business_manager_id"] = business_manager_id
 
         if new_key != old_key:
             del data[old_key]
@@ -200,7 +202,7 @@ def get_lite_origin_wabas(user_id: int) -> list:
 
 # Config fields compared/replaced when merging an existing WABA on import.
 # Matching is by waba_id (the dict key); the live Meta `snapshot` is never touched.
-MERGE_FIELDS = ("token", "adspower_profile_id", "serial_number")
+MERGE_FIELDS = ("token", "adspower_profile_id", "serial_number", "business_manager_id")
 
 
 def import_wabas(user_id: int, incoming: dict) -> dict:

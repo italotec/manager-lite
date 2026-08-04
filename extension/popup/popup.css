@@ -1,0 +1,174 @@
+/* Hand-written, no Tailwind CDN (blocked by extension CSP) — hex values match
+   app/static/app.css + the zinc/indigo/emerald/red/amber Tailwind shades used throughout
+   app/templates/base.html and app/templates/verificar.html. */
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  width: 380px;
+  background: #09090b;
+  color: #f4f4f5;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 13px;
+}
+
+.hidden { display: none !important; }
+
+.ml-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.ml-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #27272a;
+}
+
+.ml-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 0.75rem;
+  background: #27272a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.ml-title { flex: 1; min-width: 0; }
+.ml-name { font-weight: 600; font-size: 14px; }
+.ml-tag { font-size: 11px; color: #a1a1aa; }
+
+.ml-icon-btn {
+  border: none;
+  background: #27272a;
+  color: #f4f4f5;
+  border-radius: 0.75rem;
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+}
+.ml-icon-btn:hover { background: #3f3f46; }
+.ml-icon-btn:disabled { opacity: .5; cursor: default; }
+
+.ml-empty {
+  padding: 24px 16px;
+  color: #a1a1aa;
+  text-align: center;
+  line-height: 1.5;
+}
+
+#viewMain { padding: 14px 16px 16px; }
+
+.ml-rows {
+  border: 1px solid #27272a;
+  border-radius: 1rem;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+.ml-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+}
+.ml-k { color: #a1a1aa; font-size: 12px; }
+.ml-v { font-size: 12px; font-weight: 600; text-align: right; word-break: break-all; }
+
+.ml-status-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid #27272a;
+  border-radius: 1rem;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+.ml-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  margin-top: 4px;
+  flex-shrink: 0;
+  background: #71717a;
+}
+.ml-status-title { font-weight: 600; font-size: 12.5px; }
+.ml-status-detail { font-size: 11.5px; color: #a1a1aa; margin-top: 2px; }
+
+.ml-status-idle .ml-dot { background: #71717a; }
+
+.ml-status-checking .ml-dot {
+  background: #fcd34d;
+  animation: ml-pulse 1.1s ease-in-out infinite;
+}
+.ml-status-checking { background: rgba(120, 53, 15, .3); border-color: #78350f; }
+.ml-status-checking .ml-status-title { color: #fcd34d; }
+
+.ml-status-ok { background: rgba(4, 120, 87, .18); border-color: #047857; }
+.ml-status-ok .ml-dot { background: #34d399; }
+.ml-status-ok .ml-status-title { color: #34d399; }
+
+.ml-status-bad { background: rgba(153, 27, 27, .22); border-color: #b91c1c; }
+.ml-status-bad .ml-dot { background: #f87171; }
+.ml-status-bad .ml-status-title { color: #f87171; }
+
+.ml-status-warn { background: rgba(120, 53, 15, .22); border-color: #78350f; }
+.ml-status-warn .ml-dot { background: #fcd34d; }
+.ml-status-warn .ml-status-title { color: #fcd34d; }
+
+@keyframes ml-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .35; }
+}
+
+.ml-btn-primary {
+  width: 100%;
+  padding: 11px;
+  border: none;
+  border-radius: 0.75rem;
+  background: #4338ca;
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ml-btn-primary:hover:not(:disabled) { background: #4f46e5; }
+.ml-btn-primary:disabled { background: #27272a; color: #71717a; cursor: default; }
+
+.ml-steps {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ml-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #a1a1aa;
+}
+.ml-step .ml-step-icon { width: 14px; text-align: center; flex-shrink: 0; }
+.ml-step.ml-step-done { color: #34d399; }
+.ml-step.ml-step-error { color: #f87171; }
+.ml-step.ml-step-active { color: #f4f4f5; }
+
+.ml-toast {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 0.75rem;
+  font-size: 12px;
+  border: 1px solid;
+}
+.ml-toast.ok { background: rgba(4, 120, 87, .3); border-color: #047857; color: #6ee7b7; }
+.ml-toast.err { background: rgba(153, 27, 27, .35); border-color: #b91c1c; color: #fca5a5; }

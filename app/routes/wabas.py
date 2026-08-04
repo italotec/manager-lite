@@ -21,11 +21,13 @@ def add():
 
     adspower_profile_id = (request.form.get("adspower_profile_id") or "").strip()
     serial_number = (request.form.get("serial_number") or "").strip()
+    business_manager_id = (request.form.get("business_manager_id") or "").strip()
 
     # Write/update in user's bms.json
     upsert_waba(current_user.id, waba_id=waba_id, token=token,
                 adspower_profile_id=adspower_profile_id,
-                serial_number=serial_number)
+                serial_number=serial_number,
+                business_manager_id=business_manager_id)
 
     # Subscribe app to webhook events for this WABA (best-effort)
     subscribe_waba_webhook(Config.META_API_VERSION, token, waba_id)
@@ -49,6 +51,7 @@ def data(waba_id):
         "token": entry.get("token", ""),
         "adspower_profile_id": entry.get("adspower_profile_id", ""),
         "serial_number": entry.get("serial_number", ""),
+        "business_manager_id": entry.get("business_manager_id", ""),
     })
 
 
@@ -84,10 +87,12 @@ def edit():
 
     adspower_profile_id = (request.form.get("adspower_profile_id") or "").strip()
     serial_number = (request.form.get("serial_number") or "").strip()
+    business_manager_id = (request.form.get("business_manager_id") or "").strip()
 
     ok, err = update_waba(current_user.id, original_waba_id, waba_id, token,
                           adspower_profile_id=adspower_profile_id,
-                          serial_number=serial_number)
+                          serial_number=serial_number,
+                          business_manager_id=business_manager_id)
     if not ok:
         flash(err, "error")
         return redirect(url_for("dashboard.dashboard"))

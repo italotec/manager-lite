@@ -25,6 +25,10 @@ Your API key is shown on the dashboard under **Chave de API**.
 | `waba_id` | string | yes | WhatsApp Business Account ID |
 | `token` | string | yes | Meta access token for this WABA |
 | `adspower_profile_id` | string | no | AdsPower profile ID to link with this BM; when set, an "Open in AdsPower" button appears on the dashboard |
+| `business_manager_id` | string | no | ID of the Business Manager that owns this WABA |
+| `payment_account_id` | string | no | Meta payment account ID associated with this WABA |
+| `serial_number` | string | no | AdsPower profile serial number ("Profile No."), shown on the dashboard |
+| `messaging_limit_tier` | string | no | Messaging tier (`TIER_50`, `TIER_250`, `TIER_2K`, `TIER_10K`, `TIER_100K`, `TIER_UNLIMITED`); overrides the value from the next background sync |
 
 ```json
 {
@@ -42,12 +46,15 @@ Your API key is shown on the dashboard under **Chave de API**.
   "ok": true,
   "waba_id": "123456789",
   "adspower_profile_id": "user_12345",
+  "business_manager_id": null,
+  "payment_account_id": null,
+  "serial_number": null,
   "webhook_subscribed": true,
   "webhook_error": null
 }
 ```
 
-`adspower_profile_id` is `null` when the field was not sent in the request.
+`adspower_profile_id`, `business_manager_id`, `payment_account_id` and `serial_number` are `null` when the corresponding field was not sent in the request. `messaging_limit_tier` is accepted but not echoed back — check the dashboard to confirm it took effect.
 
 - `webhook_subscribed` — `true` if the webhook subscription call to Meta succeeded.
 - `webhook_error` — `null` on success, or a string describing the Meta API error. The BM is saved regardless of webhook subscription outcome.

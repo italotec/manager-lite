@@ -16,6 +16,7 @@ def register_business_manager(
     token: str,
     adspower_profile_id: str | None = None,
     serial_number: str | None = None,
+    business_manager_id: str | None = None,
     timeout: int = 15,
 ) -> dict:
     """POST /api/v1/business-managers — idempotent upsert + webhook subscribe.
@@ -40,6 +41,8 @@ def register_business_manager(
         body_payload["adspower_profile_id"] = adspower_profile_id
     if serial_number:
         body_payload["serial_number"] = str(serial_number)
+    if business_manager_id:
+        body_payload["business_manager_id"] = str(business_manager_id)
     try:
         resp = requests.post(
             url,

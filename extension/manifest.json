@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "Manager Lite — WABA",
+  "version": "1.0.0",
+  "description": "Verifica restrição de Business Manager e vincula a WABA ao Manager Lite direto do navegador.",
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "assets/icon16.png",
+      "48": "assets/icon48.png",
+      "128": "assets/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "assets/icon16.png",
+    "48": "assets/icon48.png",
+    "128": "assets/icon128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": ["storage", "tabs"],
+  "host_permissions": [
+    "https://business.facebook.com/*",
+    "https://start.adspower.net/*",
+    "http://127.0.0.1/*",
+    "http://local.adspower.net/*",
+    "__MANAGER_BASE_URL__/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://business.facebook.com/*"],
+      "js": ["lib/queries.js", "content/bridge.js"],
+      "world": "MAIN",
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://business.facebook.com/*"],
+      "js": ["content/relay.js"],
+      "world": "ISOLATED",
+      "run_at": "document_idle"
+    }
+  ]
+}

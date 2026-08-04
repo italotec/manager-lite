@@ -428,6 +428,7 @@ def _execute_link_waba_sync(msg: dict, log=print, emit=None) -> dict:
                             token=reg_token,
                             adspower_profile_id=profile_id,
                             serial_number=serial_number,
+                            business_manager_id=bid,
                         )
                         if not reg["ok"]:
                             raise RuntimeError(reg.get("error") or "Manager API error")
