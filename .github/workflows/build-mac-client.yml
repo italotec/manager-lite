@@ -1,4 +1,4 @@
-name: Build macOS Card Client
+name: Build macOS Lite Client
 
 on:
   workflow_dispatch: {}
@@ -49,13 +49,13 @@ jobs:
           iconutil -c icns icon.iconset -o prosperidadelogo.icns
 
       - name: Build with PyInstaller
-        run: pyinstaller "Card Client-mac.spec"
+        run: pyinstaller "Lite Client-mac.spec"
 
       - name: Verify built binary architecture
-        run: file "dist/Card Client.app/Contents/MacOS/Card Client"
+        run: file "dist/Lite Client.app/Contents/MacOS/Lite Client"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Card-Client-macOS
-          path: agent/dist/Card Client.app
+          name: Lite-Client-macOS
+          path: agent/dist/Lite Client.app
           if-no-files-found: error

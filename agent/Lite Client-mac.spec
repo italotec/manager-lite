@@ -1,9 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
+# macOS (arm64) build of the Lite Client. Must be run ON macOS — PyInstaller
+# does not cross-compile. See README.md ("Build for macOS") for the full
+# build steps (Python/Tk prerequisites, icon generation, pyinstaller invocation).
 from PyInstaller.utils.hooks import collect_all
 
 # services/ is bundled as DATA (below), so PyInstaller never analyzes its
 # imports statically — every third-party lib it lazily imports must be
-# collected explicitly here or the frozen exe raises "No module named X"
+# collected explicitly here or the frozen app raises "No module named X"
 # only when that code path runs at runtime.
 _collect = [
     'playwright',   # facebook_card browser automation (bundles the node driver)
@@ -88,21 +91,38 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
-    name='Card Client',
-    icon=['prosperidadelogo.ico'],
+    exclude_binaries=True,
+    name='Lite Client',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,  # UPX can corrupt native extensions (playwright driver)
-    upx_exclude=[],
-    runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
-    target_arch=None,
+    target_arch='arm64',
     codesign_identity=None,
     entitlements_file=None,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=False,
+    name='Lite Client',
+)
+
+app = BUNDLE(
+    coll,
+    name='Lite Client.app',
+    icon='prosperidadelogo.icns',
+    bundle_identifier='store.verifywaba.liteclient',
+    info_plist={
+        'NSHighResolutionCapable': True,
+        'LSMinimumSystemVersion': '12.0',
+        'CFBundleShortVersionString': '1.0.0',
+    },
 )

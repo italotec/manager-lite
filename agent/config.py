@@ -1,4 +1,4 @@
-"""Config loader for the Card Client. Reads defaults from .env (if present) so
+"""Config loader for the Lite Client. Reads defaults from .env (if present) so
 the GUI fields can be pre-filled — the user can still edit them before connecting."""
 import os
 import sys

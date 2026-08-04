@@ -1,4 +1,4 @@
-# Card Client — Manager Lite local agent
+# Lite Client — Manager Lite local agent
 
 Local GUI client that adds credit cards to WhatsApp Business Accounts (WABAs)
 via Facebook billing, and opens AdsPower profiles on request. It runs next to
@@ -72,9 +72,9 @@ next `browser_status` ping, sent every 5s:
 ## Build to .exe (Windows)
 
 ```
-pyinstaller "Card Client.spec"
+pyinstaller "Lite Client.spec"
 ```
-Produces `dist/Card Client/Card Client.exe` (or a single file, depending on
+Produces `dist/Lite Client/Lite Client.exe` (or a single file, depending on
 the spec). Never edit generated `build/`/`dist/` output by hand — re-run
 PyInstaller after any source change.
 
@@ -118,14 +118,14 @@ sips -z 512 512   prosperidade_icon_1024.png --out icon.iconset/icon_512x512.png
 cp prosperidade_icon_1024.png icon.iconset/icon_512x512@2x.png
 iconutil -c icns icon.iconset -o prosperidadelogo.icns
 
-pyinstaller "Card Client-mac.spec"
+pyinstaller "Lite Client-mac.spec"
 ```
-Produces `dist/Card Client.app` (native arm64). Since this is a local,
+Produces `dist/Lite Client.app` (native arm64). Since this is a local,
 unsigned build (no Apple Developer account / notarization), macOS won't
 Gatekeeper-block it as long as it was built directly on that Mac rather than
 downloaded/AirDropped. If it's ever moved between Macs, clear the quarantine
-flag once: `xattr -dr com.apple.quarantine "Card Client.app"`.
+flag once: `xattr -dr com.apple.quarantine "Lite Client.app"`.
 
-Logs are written next to the app (inside `Card Client.app/Contents/MacOS/logs/`),
+Logs are written next to the app (inside `Lite Client.app/Contents/MacOS/logs/`),
 same convention as Windows — keep the `.app` in a user-writable folder
 (Desktop/Downloads), not `/Applications`.

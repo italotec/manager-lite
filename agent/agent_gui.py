@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Card Client — Manager Lite's local agent GUI (builds into "Card Client.exe").
+Lite Client — Manager Lite's local agent GUI (builds into "Lite Client.exe").
 
 Paste your Manager Lite Server URL and API Key (Manager Lite → API page),
 click Connect. Runs next to AdsPower and handles add_card jobs dispatched
