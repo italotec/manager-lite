@@ -51,6 +51,9 @@
 <script>
 let _rows = [];
 let _selected = new Set();
+let _openPids = new Set();
+let _optimistic = new Map(); // pid -> expiry epoch ms
+const isOpen = pid => _openPids.has(pid) || (_optimistic.get(pid) || 0) > Date.now();
 
 function statusBadge(row) {
   if (row.linking_at) {
@@ -110,16 +113,21 @@ function renderRows() {
       <td class="py-3 px-3 font-mono text-zinc-400 text-xs">${escapeHtml(row.waba_id) || "—"}</td>
       <td class="py-3 px-3">${statusBadge(row)}</td>
       <td class="py-3 px-3">
-        <button type="button"
-                title="Abrir no AdsPower"
-                onclick="openProfile('${row.profile_id}')"
-                class="p-1.5 rounded-lg text-zinc-500 hover:!text-emerald-400 hover:bg-emerald-950/40 transition-colors">
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none"
-               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="2" y="3" width="20" height="14" rx="2"></rect>
-            <path d="M8 21h8"></path><path d="M12 17v4"></path>
-          </svg>
-        </button>
+        <div class="flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0 ${isOpen(row.profile_id) ? "" : "hidden"}"
+                style="box-shadow:0 0 6px rgba(52,211,153,0.8)"
+                title="Perfil aberto no AdsPower"></span>
+          <button type="button"
+                  title="Abrir no AdsPower"
+                  onclick="openProfile('${row.profile_id}')"
+                  class="p-1.5 rounded-lg text-zinc-500 hover:!text-emerald-400 hover:bg-emerald-950/40 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2"></rect>
+              <path d="M8 21h8"></path><path d="M12 17v4"></path>
+            </svg>
+          </button>
+        </div>
       </td>
     </tr>
   `).join("");
@@ -165,18 +173,26 @@ async function conectarSelected() {
       return;
     }
     showToast(`${d.enqueued} perfil(is) enfileirado(s)` + (d.skipped ? `, ${d.skipped} já conectado(s)` : ""), true);
-    await fetchRows();
+    await tick();
   } finally {
     btn.disabled = false;
   }
 }
 
 async function openProfile(pid) {
+  _optimistic.set(pid, Date.now() + 20000);
+  renderRows();
   try {
     const r = await fetch("/verificar/open/" + pid, { method: "POST" });
     const d = await r.json();
-    if (!d.ok) showToast(d.error || "Erro ao abrir perfil.", false);
+    if (!d.ok) {
+      _optimistic.delete(pid);
+      renderRows();
+      showToast(d.error || "Erro ao abrir perfil.", false);
+    }
   } catch (e) {
+    _optimistic.delete(pid);
+    renderRows();
     showToast("Erro ao abrir perfil.", false);
   }
 }
@@ -185,7 +201,14 @@ async function fetchRows() {
   const r = await fetch("{{ url_for('verificar.rows') }}");
   const d = await r.json();
   _rows = d.rows || [];
-  renderRows();
+}
+
+async function fetchOpenProfiles() {
+  try {
+    const r = await fetch("/open-profiles");
+    const d = await r.json();
+    _openPids = new Set(d.open_profile_ids || []);
+  } catch (e) {}
 }
 
 function showToast(msg, ok) {
@@ -199,7 +222,12 @@ function showToast(msg, ok) {
   setTimeout(() => t.classList.add("hidden"), 4000);
 }
 
-fetchRows();
-setInterval(fetchRows, 2000);
+async function tick() {
+  await Promise.all([fetchRows(), fetchOpenProfiles()]);
+  renderRows();
+}
+
+tick();
+setInterval(tick, 2000);
 </script>
 {% endblock %}
